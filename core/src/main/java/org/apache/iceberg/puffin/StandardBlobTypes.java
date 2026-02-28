@@ -29,4 +29,12 @@ public final class StandardBlobTypes {
 
   /** A serialized deletion vector according to the Iceberg spec */
   public static final String DV_V1 = "deletion-vector-v1";
+
+  /**
+   * A serialized BloomFilter produced by the <a
+   * href="https://datasketches.apache.org/">Apache DataSketches</a> library, representing a
+   * table-level bloom filter index for a single column
+   */
+  public static final String APACHE_DATASKETCHES_BLOOM_FILTER_V1 =
+      "apache-datasketches-bloom-filter-v1";
 }

@@ -73,12 +73,12 @@ public class CreateTableSpark {
             + " (id BIGINT, data STRING, created_at TIMESTAMP) "
             + "USING iceberg "
             + "TBLPROPERTIES ("
-            + "'write.parquet.bloom-filter-enabled.column.id'='true',"
-            + "'write.parquet.bloom-filter-enabled.column.data'='true'"
+            + "'write.parquet.table-level-bloom-filter-enabled.column.id'='true',"
+            + "'write.parquet.table-level-bloom-filter-enabled.column.data'='true'"
             + ")");
 
     System.out.println("Created table: " + tableName);
-    System.out.println("Bloom filters: enabled for id, data");
+    System.out.println("Table-level bloom filters: enabled for id, data (row-group bloom filters also enabled implicitly)");
 
     int numDataFiles = 10;
     int recordsPerFile = 10;
@@ -109,7 +109,7 @@ public class CreateTableSpark {
     table.refresh();
 
     ComputeTableStats.Result result =
-        SparkActions.get().computeTableStats(table).columns("data").execute();
+        SparkActions.get().computeTableStats(table).columns("id", "data").execute();
 
     System.out.println(
         "Created Puffin file with NDV for data field: "
@@ -119,6 +119,21 @@ public class CreateTableSpark {
                 .findFirst()
                 .orElse("N/A")
             + " distinct values");
+
+    long bloomFilterCount =
+        result.statisticsFile().blobMetadata().stream()
+            .filter(m -> m.type().equals("apache-datasketches-bloom-filter-v1"))
+            .count();
+    System.out.println("Created " + bloomFilterCount + " table-level bloom filter blob(s) in Puffin file");
+    result.statisticsFile().blobMetadata().stream()
+        .filter(m -> m.type().equals("apache-datasketches-bloom-filter-v1"))
+        .forEach(
+            m ->
+                System.out.println(
+                    "  Bloom filter blob: fields="
+                        + m.fields()
+                        + " fpp="
+                        + m.properties().get("fpp")));
 
     spark.stop();
   }

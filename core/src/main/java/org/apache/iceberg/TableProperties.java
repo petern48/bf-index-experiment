@@ -177,6 +177,9 @@ public class TableProperties {
   public static final String PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX =
       "write.parquet.bloom-filter-enabled.column.";
 
+  public static final String PARQUET_BLOOM_FILTER_TABLE_LEVEL_COLUMN_ENABLED_PREFIX =
+      "write.parquet.table-level-bloom-filter-enabled.column.";
+
   public static final String PARQUET_COLUMN_STATS_ENABLED_PREFIX =
       "write.parquet.stats-enabled.column.";
 

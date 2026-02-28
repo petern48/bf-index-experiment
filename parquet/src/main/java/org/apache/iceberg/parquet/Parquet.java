@@ -27,6 +27,7 @@ import static org.apache.iceberg.TableProperties.DELETE_PARQUET_ROW_GROUP_CHECK_
 import static org.apache.iceberg.TableProperties.DELETE_PARQUET_ROW_GROUP_CHECK_MIN_RECORD_COUNT;
 import static org.apache.iceberg.TableProperties.DELETE_PARQUET_ROW_GROUP_SIZE_BYTES;
 import static org.apache.iceberg.TableProperties.PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX;
+import static org.apache.iceberg.TableProperties.PARQUET_BLOOM_FILTER_TABLE_LEVEL_COLUMN_ENABLED_PREFIX;
 import static org.apache.iceberg.TableProperties.PARQUET_BLOOM_FILTER_COLUMN_FPP_PREFIX;
 import static org.apache.iceberg.TableProperties.PARQUET_BLOOM_FILTER_COLUMN_NDV_PREFIX;
 import static org.apache.iceberg.TableProperties.PARQUET_BLOOM_FILTER_MAX_BYTES;
@@ -604,6 +605,21 @@ public class Parquet {
 
         Map<String, String> columnBloomFilterEnabled =
             PropertyUtil.propertiesWithPrefix(config, PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX);
+
+        // Table-level bloom filters imply row-group-level bloom filters
+        Map<String, String> tableLevelBloomFilterEnabled =
+            PropertyUtil.propertiesWithPrefix(
+                config, PARQUET_BLOOM_FILTER_TABLE_LEVEL_COLUMN_ENABLED_PREFIX);
+        if (!tableLevelBloomFilterEnabled.isEmpty()) {
+          Map<String, String> combined = Maps.newHashMap(columnBloomFilterEnabled);
+          tableLevelBloomFilterEnabled.forEach(
+              (col, val) -> {
+                if (Boolean.parseBoolean(val)) {
+                  combined.put(col, "true");
+                }
+              });
+          columnBloomFilterEnabled = ImmutableMap.copyOf(combined);
+        }
 
         Map<String, String> columnStatsEnabled =
             PropertyUtil.propertiesWithPrefix(config, PARQUET_COLUMN_STATS_ENABLED_PREFIX);
