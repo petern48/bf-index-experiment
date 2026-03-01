@@ -39,6 +39,7 @@ import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.metrics.ScanReport;
+import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.spark.Spark3Util;
@@ -170,24 +171,37 @@ abstract class SparkPartitioningAwareScan<T extends PartitionScanTask> extends S
     return specs;
   }
 
+  /**
+   * Returns {@code false} if table-level statistics (e.g. bloom filters) prove that the current
+   * scan predicate cannot match any row, allowing the entire scan to be skipped. Subclasses may
+   * override to add statistics-based pruning. The default returns {@code true} (proceed normally).
+   */
+  protected boolean canSatisfyPredicatesFromStatistics() {
+    return true;
+  }
+
   protected synchronized List<T> tasks() {
     if (tasks == null) {
-      try (CloseableIterable<? extends ScanTask> taskIterable = scan.planFiles()) {
-        List<T> plannedTasks = Lists.newArrayList();
+      if (!canSatisfyPredicatesFromStatistics()) {
+        this.tasks = ImmutableList.of();
+      } else {
+        try (CloseableIterable<? extends ScanTask> taskIterable = scan.planFiles()) {
+          List<T> plannedTasks = Lists.newArrayList();
 
-        for (ScanTask task : taskIterable) {
-          ValidationException.check(
-              taskJavaClass().isInstance(task),
-              "Unsupported task type, expected a subtype of %s: %s",
-              taskJavaClass().getName(),
-              task.getClass().getName());
+          for (ScanTask task : taskIterable) {
+            ValidationException.check(
+                taskJavaClass().isInstance(task),
+                "Unsupported task type, expected a subtype of %s: %s",
+                taskJavaClass().getName(),
+                task.getClass().getName());
 
-          plannedTasks.add(taskJavaClass().cast(task));
+            plannedTasks.add(taskJavaClass().cast(task));
+          }
+
+          this.tasks = plannedTasks;
+        } catch (IOException e) {
+          throw new UncheckedIOException("Failed to close scan: " + scan, e);
         }
-
-        this.tasks = plannedTasks;
-      } catch (IOException e) {
-        throw new UncheckedIOException("Failed to close scan: " + scan, e);
       }
     }
 

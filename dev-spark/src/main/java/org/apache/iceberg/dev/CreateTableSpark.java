@@ -70,7 +70,7 @@ public class CreateTableSpark {
     spark.sql(
         "CREATE TABLE "
             + tableName
-            + " (id BIGINT, data STRING, created_at TIMESTAMP) "
+            + " (id BIGINT, data STRING, data2 STRING, created_at TIMESTAMP) "
             + "USING iceberg "
             + "TBLPROPERTIES ("
             + "'write.parquet.table-level-bloom-filter-enabled.column.id'='true',"
@@ -88,6 +88,7 @@ public class CreateTableSpark {
           org.apache.spark.sql.RowFactory.create(
               (long) (i + 1),
               "item_" + (i + 1),
+              "item_" + (i + 2),
               java.sql.Timestamp.from(
                   java.time.OffsetDateTime.parse("2024-01-15T10:00:00Z").plusDays(i).toInstant())));
     }
@@ -97,6 +98,7 @@ public class CreateTableSpark {
             new StructField[] {
               DataTypes.createStructField("id", DataTypes.LongType, false),
               DataTypes.createStructField("data", DataTypes.StringType, false),
+              DataTypes.createStructField("data2", DataTypes.StringType, false),
               DataTypes.createStructField("created_at", DataTypes.TimestampType, true)
             });
 
@@ -109,7 +111,7 @@ public class CreateTableSpark {
     table.refresh();
 
     ComputeTableStats.Result result =
-        SparkActions.get().computeTableStats(table).columns("id", "data").execute();
+        SparkActions.get().computeTableStats(table).columns("id", "data", "data2").execute();
 
     System.out.println(
         "Created Puffin file with NDV for data field: "

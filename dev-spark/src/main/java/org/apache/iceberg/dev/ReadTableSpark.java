@@ -29,6 +29,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.execution.SparkPlan;
 import org.apache.spark.sql.execution.metric.SQLMetric;
+import static org.apache.spark.sql.functions.col;
 
 /**
  * Reads Iceberg tables locally using Spark with a Hadoop catalog.
@@ -68,22 +69,49 @@ public class ReadTableSpark {
 
     System.out.println("Reading table: " + tableName);
 
+    // --- Query 1: id = 99 (value EXISTS in the table) ---
+    System.out.println("\n=== Query 1: id = 99 (value exists in table) ===");
+    System.out.println("Expected: bloom filter passes, files scanned normally");
     Dataset<Row> df = spark.table(tableName);
-    String predicate = "id = 99";
-    Dataset<Row> filteredDf = df.filter(predicate);
+    Dataset<Row> filteredDf99 = df.filter("id = 99");
     // Use collect() - count() uses a different plan (e.g. WholeStageCodegen) that doesn't populate scan metrics
-    List<Row> rows = filteredDf.collectAsList();
-    System.out.println("\nRow count: " + rows.size());
+    List<Row> rows99 = filteredDf99.collectAsList();
+    System.out.println("Row count: " + rows99.size());
+    if (rows99.size() > 0) {
+      System.out.println("Bloom filter result: MIGHT CONTAIN -> scan proceeded normally");
+    }
+    printScanMetrics(filteredDf99);
+    filteredDf99.show(5, false);
 
-    // Pass the DataFrame that was actually executed so metrics are populated
-    printScanMetrics(filteredDf);
+    // --- Query 2: id = 9999 (value ABSENT from the table) ---
+    // System.out.println("\n=== Query 2: id = 9999 (value absent from table) ===");
+    // System.out.println("Expected: bloom filter fires, entire scan skipped (0 files, 0 rows)");
+    // Dataset<Row> filteredDf9999 = spark.table(tableName).filter("id = 9999");
+    // List<Row> rows9999 = filteredDf9999.collectAsList();
+    // System.out.println("Row count: " + rows9999.size());
+    // if (rows9999.isEmpty()) {
+    //   System.out.println("Bloom filter result: CANNOT CONTAIN -> scan was skipped");
+    // } else {
+    //   System.out.println("Bloom filter result: false positive (bloom filter passed but value absent)");
+    // }
+    // printScanMetrics(filteredDf9999);
 
-    System.out.println("Schema:");
-    df.printSchema();
+    // System.out.println("\nSchema:");
+    // df.printSchema();
 
-    System.out.println("Sample (first 10 rows):");
-    filteredDf.show(10, false);
 
+    // --- Query 3: JOIN on data = data2 ---
+    System.out.println("\n=== Query 3: JOIN on data = data2 ===");
+    Dataset<Row> joinedDf = df.as("a").join(df.as("b"), col("a.data").equalTo(col("b.data2")));
+    List<Row> rowsJoined = joinedDf.collectAsList();
+    System.out.println("Row count: " + rowsJoined.size());
+    if (rowsJoined.size() > 0) {
+      System.out.println("Bloom filter result: MIGHT CONTAIN -> scan proceeded normally");
+    }
+    printScanMetrics(joinedDf);
+    joinedDf.show(5, false);
+
+    // End Program
     spark.stop();
   }
 
@@ -132,6 +160,8 @@ public class ReadTableSpark {
     SQLMetric m = metrics.get(name);
     if (m != null) {
       System.out.println("  " + description + ": " + m.value());
+    } else {
+      System.out.println("  " + name + ": (metric not found)");
     }
   }
 }

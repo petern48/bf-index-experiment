@@ -36,6 +36,7 @@ import org.apache.iceberg.ScanTaskGroup;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.spark.TableBloomFilterEvaluator;
 import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.expressions.Binder;
 import org.apache.iceberg.expressions.Evaluator;
@@ -73,6 +74,10 @@ class SparkBatchQueryScan extends SparkPartitioningAwareScan<PartitionScanTask>
   private final Long asOfTimestamp;
   private final String tag;
   private final List<Expression> runtimeFilterExpressions;
+
+  // Lazily initialized bloom filter evaluator (null = not yet loaded; evaluator itself may be null)
+  private volatile TableBloomFilterEvaluator bloomFilterEvaluator = null;
+  private volatile boolean bloomFilterEvaluatorLoaded = false;
 
   SparkBatchQueryScan(
       SparkSession spark,
@@ -210,6 +215,44 @@ class SparkBatchQueryScan extends SparkPartitioningAwareScan<PartitionScanTask>
     }
 
     return runtimeFilterExpr;
+  }
+
+  @Override
+  protected boolean canSatisfyPredicatesFromStatistics() {
+    if (!bloomFilterEvaluatorLoaded) {
+      Expression filter = filter();
+      Snapshot snapshot = resolveSnapshot();
+      if (snapshot != null && filter != null && filter != Expressions.alwaysTrue()) {
+        bloomFilterEvaluator =
+            TableBloomFilterEvaluator.create(table(), snapshot, filter, caseSensitive());
+      }
+      bloomFilterEvaluatorLoaded = true;
+    }
+    if (bloomFilterEvaluator == null) {
+      return true;
+    }
+    boolean mightContain = bloomFilterEvaluator.mightContain();
+    if (!mightContain) {
+      LOG.debug(
+          "Skipping scan of {} - predicate cannot match based on table-level bloom filter",
+          table().name());
+    }
+    return mightContain;
+  }
+
+  private Snapshot resolveSnapshot() {
+    if (snapshotId != null) {
+      return table().snapshot(snapshotId);
+    } else if (asOfTimestamp != null) {
+      long id = SnapshotUtil.snapshotIdAsOfTime(table(), asOfTimestamp);
+      return table().snapshot(id);
+    } else if (branch() != null) {
+      return table().snapshot(branch());
+    } else if (tag != null) {
+      return table().snapshot(tag);
+    } else {
+      return table().currentSnapshot();
+    }
   }
 
   @Override
