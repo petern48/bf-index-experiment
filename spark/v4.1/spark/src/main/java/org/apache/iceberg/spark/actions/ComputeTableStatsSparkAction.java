@@ -20,6 +20,7 @@ package org.apache.iceberg.spark.actions;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.iceberg.GenericBlobMetadata;
@@ -31,6 +32,7 @@ import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.StatisticsFile;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableOperations;
+import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.actions.ComputeTableStats;
 import org.apache.iceberg.actions.ImmutableComputeTableStats;
 import org.apache.iceberg.exceptions.RuntimeIOException;
@@ -41,8 +43,10 @@ import org.apache.iceberg.puffin.PuffinWriter;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableSet;
+import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.spark.JobGroupInfo;
 import org.apache.iceberg.types.Types;
+import org.apache.iceberg.util.PropertyUtil;
 import org.apache.spark.sql.SparkSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -102,7 +106,9 @@ public class ComputeTableStatsSparkAction extends BaseSparkAction<ComputeTableSt
         columns(),
         table.name(),
         snapshotId());
-    List<Blob> blobs = generateNDVBlobs();
+    List<Blob> blobs = Lists.newArrayList();
+    blobs.addAll(generateNDVBlobs());
+    blobs.addAll(generateFileBloomFilterBlobs());
     StatisticsFile statisticsFile = writeStatsFile(blobs);
     table.updateStatistics().setStatistics(statisticsFile).commit();
     return ImmutableComputeTableStats.Result.builder().statisticsFile(statisticsFile).build();
@@ -127,6 +133,31 @@ public class ComputeTableStatsSparkAction extends BaseSparkAction<ComputeTableSt
 
   private List<Blob> generateNDVBlobs() {
     return NDVSketchUtil.generateBlobs(spark(), table, snapshot, columns());
+  }
+
+  private List<Blob> generateFileBloomFilterBlobs() {
+    List<String> cols = fileBloomFilterColumns();
+    if (cols.isEmpty()) {
+      return ImmutableList.of();
+    }
+    LOG.info(
+        "Computing file-level bloom filters for columns {} in {} (snapshot {})",
+        cols,
+        table.name(),
+        snapshotId());
+    return FileBloomFilterUtil.generateBlobs(spark(), table, snapshot, cols);
+  }
+
+  private List<String> fileBloomFilterColumns() {
+    Schema schema = table.schemas().get(snapshot.schemaId());
+    Map<String, String> enabled =
+        PropertyUtil.propertiesWithPrefix(
+            table.properties(), TableProperties.PUFFIN_BLOOM_FILTER_COLUMN_ENABLED_PREFIX);
+    return enabled.entrySet().stream()
+        .filter(e -> Boolean.parseBoolean(e.getValue()))
+        .map(Map.Entry::getKey)
+        .filter(col -> schema.findField(col) != null && schema.findField(col).type().isPrimitiveType())
+        .collect(Collectors.toList());
   }
 
   private List<String> columns() {

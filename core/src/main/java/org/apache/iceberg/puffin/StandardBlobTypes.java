@@ -29,4 +29,13 @@ public final class StandardBlobTypes {
 
   /** A serialized deletion vector according to the Iceberg spec */
   public static final String DV_V1 = "deletion-vector-v1";
+
+  /**
+   * A serialized BloomFilter produced by the <a
+   * href="https://datasketches.apache.org/">Apache DataSketches</a> library, covering a single
+   * data file. The blob properties include {@code data-file-path} identifying the file and {@code
+   * fpp} recording the effective false-positive probability.
+   */
+  public static final String APACHE_DATASKETCHES_BLOOM_FILTER_V1 =
+      "apache-datasketches-bloom-filter-v1";
 }

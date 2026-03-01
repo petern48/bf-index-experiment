@@ -74,7 +74,8 @@ public class CreateTableSpark {
             + "USING iceberg "
             + "TBLPROPERTIES ("
             + "'write.parquet.bloom-filter-enabled.column.id'='true',"
-            + "'write.parquet.bloom-filter-enabled.column.data'='true'"
+            + "'write.parquet.bloom-filter-enabled.column.data'='true',"
+            + "'write.puffin.bloom-filter-enabled.column.id'='true'"
             + ")");
 
     System.out.println("Created table: " + tableName);
@@ -109,16 +110,24 @@ public class CreateTableSpark {
     table.refresh();
 
     ComputeTableStats.Result result =
-        SparkActions.get().computeTableStats(table).columns("data").execute();
+        SparkActions.get().computeTableStats(table).columns("id", "data").execute();
 
-    System.out.println(
-        "Created Puffin file with NDV for data field: "
-            + result.statisticsFile().blobMetadata().stream()
-                .filter(m -> m.properties().containsKey("ndv"))
-                .map(m -> m.properties().get("ndv"))
-                .findFirst()
-                .orElse("N/A")
-            + " distinct values");
+    long ndvBlobs = result.statisticsFile().blobMetadata().stream()
+        .filter(m -> m.properties().containsKey("ndv"))
+        .count();
+    long bloomBlobs = result.statisticsFile().blobMetadata().stream()
+        .filter(m -> m.properties().containsKey("data-file-path"))
+        .count();
+    System.out.println("Puffin stats file: " + result.statisticsFile().path());
+    System.out.println("  NDV blobs:               " + ndvBlobs);
+    System.out.println("  File bloom filter blobs: " + bloomBlobs);
+    if (bloomBlobs > 0) {
+      System.out.println("  Sample bloom filter files:");
+      result.statisticsFile().blobMetadata().stream()
+          .filter(m -> m.properties().containsKey("data-file-path"))
+          .limit(3)
+          .forEach(m -> System.out.println("    " + m.properties().get("data-file-path")));
+    }
 
     spark.stop();
   }
