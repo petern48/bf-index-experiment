@@ -366,8 +366,8 @@ def plot_time_read(data: dict, out_dir: str, display_inline: bool = False, ax=No
         ax.bar(x_pos[i], p, bar_width, bottom=r, color=c[1], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
 
     ax.legend(handles=[
-        mpatches.Patch(color=c[0], label="Total"),
         mpatches.Patch(color=c[1], label="Puffin"),
+        mpatches.Patch(color=c[0], label="Rest of Query"),
     ], loc="upper right")
     ax.set_xticks(ticks)
     ax.set_xticklabels(tick_labels)
