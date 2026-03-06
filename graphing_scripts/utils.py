@@ -1,4 +1,4 @@
-"""Bloom filter evaluation graphs – shared constants, helpers, and plot functions."""
+"""Bloom filter evaluation graphs - shared constants, helpers, and plot functions."""
 
 import argparse
 import json
@@ -22,6 +22,9 @@ BF_LABELS = {
     "row_group_bloom_filter":  "Row-Group BF",
     "file_level_bloom_filter": "File-Level BF",
 }
+
+EDGE_COLOR = "white"
+LINEWIDTH = 0.5
 
 BF_KEYS   = list(BF_LABELS.keys())
 BF_COLORS = [COLORS["no_bf"], COLORS["rg_bf"], COLORS["file_bf"]]
@@ -101,13 +104,13 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
         other_rg = totals - read_row_groups - skipped_rg - file_bf_skipped_rg
         assert all(other_rg >= 0), f"Note: other row groups < 0 for {key}"
 
-        ax.bar(offsets[i], read_row_groups, bar_width, color=color)
+        ax.bar(offsets[i], read_row_groups, bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         ax.bar(offsets[i], skipped_rg, bar_width, bottom=read_row_groups,
-               color=color, alpha=STACK_ALPHA_DARK)
+               color=color, alpha=STACK_ALPHA_DARK, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         ax.bar(offsets[i], file_bf_skipped_rg, bar_width, bottom=read_row_groups + skipped_rg,
-               color=color, alpha=STACK_ALPHA_MEDIUM)
+               color=color, alpha=STACK_ALPHA_MEDIUM, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         ax.bar(offsets[i], other_rg, bar_width, bottom=read_row_groups + skipped_rg + file_bf_skipped_rg,
-               color=color, alpha=STACK_ALPHA_LIGHT)
+               color=color, alpha=STACK_ALPHA_LIGHT, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
 
     read_patch = mpatches.Patch(facecolor="dimgray", label="Read")
@@ -124,7 +127,7 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
     ax.set_xticklabels(sizes)
     ax.set_xlabel("Dataset Size")
     ax.set_ylabel("Row Groups")
-    ax.set_title("Pruning – Row Groups Read vs Skipped (Read Path)")
+    ax.set_title("Pruning - Row Groups Read vs Skipped (Read Path)")
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{int(x):,}"))
     if own_fig:
         fig.tight_layout()
@@ -155,11 +158,11 @@ def plot_pruning_read_datafiles(data: dict, out_dir: str, display_inline: bool =
         read_df = np.maximum(0, total - manifest_skipped - bloom_skipped)
         other_skipped = manifest_skipped  # manifest-level skips (partition/stats)
 
-        ax.bar(offsets[i], read_df, bar_width, color=color)
+        ax.bar(offsets[i], read_df, bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         ax.bar(offsets[i], other_skipped, bar_width, bottom=read_df,
-               color=color, alpha=STACK_ALPHA_MEDIUM)
+               color=color, alpha=STACK_ALPHA_MEDIUM, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         ax.bar(offsets[i], bloom_skipped, bar_width, bottom=read_df + other_skipped,
-               color=color, alpha=STACK_ALPHA_LIGHT)
+               color=color, alpha=STACK_ALPHA_LIGHT, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
 
     read_patch = mpatches.Patch(facecolor="dimgray",                       label="Read")
@@ -215,7 +218,7 @@ def plot_disk_storage(data: dict, out_dir: str, display_inline: bool = False, ax
             values.append(_bytes_to_mb(r.get("manifest_bytes", r.get("manifest_overhead_bytes", 0))))
             values.append(_bytes_to_mb(r.get("data_bytes", 0)))
             values.append(_bytes_to_mb(r.get("puffin_bytes", 0)))
-        ax.bar(offsets[i], np.array(values), bar_width, color=color)
+        ax.bar(offsets[i], np.array(values), bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
 
     # Tick labels: "small\nManifest", "small\nData Files", "small\nPuffin", "large\n..." etc.
     tick_labels = [f"{s}\n{file_labels[ft]}" for s in sizes for ft in file_types]
@@ -237,7 +240,7 @@ def plot_disk_storage(data: dict, out_dir: str, display_inline: bool = False, ax
 
 
 # ---------------------------------------------------------------------------
-# Chart 3: Memory Usage (Read) – Read Memory Breakdown
+# Chart 3: Memory Usage (Read) - Read Memory Breakdown
 # ---------------------------------------------------------------------------
 def plot_memory_read(data: dict, out_dir: str, display_inline: bool = False, ax=None):
     """Stacked bar: puffin read (subset) + rest of query. Total height = maxMemoryUsage.
@@ -261,9 +264,9 @@ def plot_memory_read(data: dict, out_dir: str, display_inline: bool = False, ax=
         # Puffin is a subset of max; rest = max - puffin (clamp to avoid negatives)
         rest_mb = np.maximum(0, max_mb - puffin_mb)
 
-        ax.bar(offsets[i], puffin_mb, bar_width, color=color)
+        ax.bar(offsets[i], puffin_mb, bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         ax.bar(offsets[i], rest_mb, bar_width, bottom=puffin_mb,
-               color=color, alpha=STACK_ALPHA_LIGHT)
+               color=color, alpha=STACK_ALPHA_LIGHT, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
 
     puffin_patch = mpatches.Patch(facecolor="dimgray",                       label="Puffin")
@@ -277,14 +280,14 @@ def plot_memory_read(data: dict, out_dir: str, display_inline: bool = False, ax=
     ax.set_xticklabels(sizes)
     ax.set_xlabel("Dataset Size")
     ax.set_ylabel("Peak Memory Usage (MB)")
-    ax.set_title("Peak Memory Usage – Read Path")
+    ax.set_title("Peak Memory Usage - Read Path")
     if own_fig:
         fig.tight_layout()
         save(fig, out_dir, "3_memory_read.png", display_inline=display_inline)
 
 
 # ---------------------------------------------------------------------------
-# Chart 4: Memory Usage (Write) – Write Memory Breakdown
+# Chart 4: Memory Usage (Write) - Write Memory Breakdown
 # ---------------------------------------------------------------------------
 def plot_memory_write(data: dict, out_dir: str, display_inline: bool = False, ax=None):
     """Stacked bar: data write + puffin write memory, similar to write time breakdown.
@@ -306,9 +309,9 @@ def plot_memory_write(data: dict, out_dir: str, display_inline: bool = False, ax
         data_mb = np.array([_get(r, "data_mb") for r in rows], dtype=float)
         puffin_mb = np.array([_get(r, "puffin_mb") for r in rows], dtype=float)
 
-        ax.bar(offsets[i], data_mb, bar_width, color=color)
+        ax.bar(offsets[i], data_mb, bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         ax.bar(offsets[i], puffin_mb, bar_width, bottom=data_mb,
-               color=color, alpha=STACK_ALPHA_LIGHT)
+               color=color, alpha=STACK_ALPHA_LIGHT, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
 
     data_patch = mpatches.Patch(facecolor="dimgray",                       label="Total")
@@ -322,14 +325,14 @@ def plot_memory_write(data: dict, out_dir: str, display_inline: bool = False, ax
     ax.set_xticklabels(sizes)
     ax.set_xlabel("Dataset Size")
     ax.set_ylabel("Peak Memory Usage (MB)")
-    ax.set_title("Peak Memory Usage – Write Path")
+    ax.set_title("Peak Memory Usage - Write Path")
     if own_fig:
         fig.tight_layout()
         save(fig, out_dir, "4_memory_write.png", display_inline=display_inline)
 
 
 # ---------------------------------------------------------------------------
-# Chart 5: Time (Read) – Read Time Breakdown
+# Chart 5: Time (Read) - Read Time Breakdown
 # ---------------------------------------------------------------------------
 def plot_time_read(data: dict, out_dir: str, display_inline: bool = False, ax=None):
     """Stacked bar: totalReadDuration as height, readPuffinDuration as subset (bottom).
@@ -350,9 +353,9 @@ def plot_time_read(data: dict, out_dir: str, display_inline: bool = False, ax=No
         rest_s = np.maximum(0, total_s - puffin_s)
 
         # Match write time breakdown: bottom = Total (rest), top = Puffin (light)
-        ax.bar(offsets[i], rest_s, bar_width, color=color)
+        ax.bar(offsets[i], rest_s, bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         ax.bar(offsets[i], puffin_s, bar_width, bottom=rest_s,
-               color=color, alpha=STACK_ALPHA_LIGHT)
+               color=color, alpha=STACK_ALPHA_LIGHT, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
 
     total_patch = mpatches.Patch(facecolor="dimgray",                       label="Total")
@@ -373,7 +376,7 @@ def plot_time_read(data: dict, out_dir: str, display_inline: bool = False, ax=No
 
 
 # ---------------------------------------------------------------------------
-# Chart 6: Time (Write) – Write Time Breakdown
+# Chart 6: Time (Write) - Write Time Breakdown
 # ---------------------------------------------------------------------------
 def plot_time_write(data: dict, out_dir: str, display_inline: bool = False, ax=None):
     """Stacked bar: data write + puffin write time, similar to pruning datafiles.
@@ -392,9 +395,9 @@ def plot_time_write(data: dict, out_dir: str, display_inline: bool = False, ax=N
         data_s = np.array([r.get("data_ms", 0) for r in rows], dtype=float) / 1000
         puffin_s = np.array([r.get("puffin_ms", 0) for r in rows], dtype=float) / 1000
 
-        ax.bar(offsets[i], data_s, bar_width, color=color)
+        ax.bar(offsets[i], data_s, bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         ax.bar(offsets[i], puffin_s, bar_width, bottom=data_s,
-               color=color, alpha=STACK_ALPHA_LIGHT)
+               color=color, alpha=STACK_ALPHA_LIGHT, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
 
     data_patch = mpatches.Patch(facecolor="dimgray",                       label="Data write")
