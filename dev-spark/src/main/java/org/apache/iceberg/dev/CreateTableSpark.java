@@ -279,20 +279,30 @@ public class CreateTableSpark {
           .forEach(m -> System.out.println("    " + m.properties().get("data-file-path")));
     }
 
-    // Count data files and row groups from table metadata (no file I/O; uses manifest data)
+    // Count data files, row groups, and total data file disk size from manifest metadata (no file I/O)
     int actualDataFiles = 0;
     int totalRowGroups = 0;
+    long totalDataFileSizeBytes = 0;
     try (CloseableIterable<FileScanTask> tasks = table.newScan().planFiles()) {
       for (FileScanTask task : tasks) {
         actualDataFiles++;
-        DataFile file = task.file();
-        List<Long> offsets = file.splitOffsets();
+        totalDataFileSizeBytes += task.file().fileSizeInBytes();
+        List<Long> offsets = task.file().splitOffsets();
         if (offsets != null) {
           totalRowGroups += offsets.size();
         }
       }
     }
+
+    // Sum manifest file sizes from snapshot metadata (no file I/O beyond manifest listing)
+    long totalManifestSizeBytes = 0;
+    for (org.apache.iceberg.ManifestFile manifest : table.currentSnapshot().allManifests(table.io())) {
+      totalManifestSizeBytes += manifest.length();
+    }
+
     System.out.println("Table stats: " + actualDataFiles + " data files, " + totalRowGroups + " row groups");
+    System.out.println("  Data file disk size: " + totalDataFileSizeBytes + " bytes");
+    System.out.println("  Manifest disk size:  " + totalManifestSizeBytes + " bytes");
 
     // Assertions for validation (linters complain if we use assert statements)
     if (totalRowGroups <= 0) { throw new IllegalStateException("Total row groups (" + totalRowGroups + ") is 0"); }
@@ -301,6 +311,8 @@ public class CreateTableSpark {
     WriteMetrics metrics = new WriteMetrics();
     metrics.totalDataFiles = actualDataFiles;
     metrics.totalRowGroups = totalRowGroups;
+    metrics.dataFileDiskSizeInBytes = totalDataFileSizeBytes;
+    metrics.manifestDiskSizeInBytes = totalManifestSizeBytes;
     metrics.puffinDiskSizeInBytes = result.statisticsFile().fileSizeInBytes();
     metrics.puffinFooterSizeInBytes = result.statisticsFile().fileFooterSizeInBytes();
     metrics.writeDataMaxMemory = writeDataMaxMemory;

@@ -156,38 +156,48 @@ def _bytes_to_mb(b: float) -> float:
 
 
 def plot_disk_storage(data: dict, out_dir: str, display_inline: bool = False, ax=None):
-    """Stacked bar showing puffin bytes + manifest overhead."""
+    """Grouped bar chart: disk usage by file type (manifest, data files, puffin) x bloom filter mode.
+
+    Each dataset size has 3 groups (one per file type); each group has 3 bars (one per bloom mode).
+    This makes it easy to see that only the Puffin column differs significantly across bloom modes.
+    """
     sizes = data["dataset_sizes"]
-    offsets, ticks, _ = group_positions(len(sizes), 3)
+    file_types = ["manifest", "data", "puffin"]
+    file_labels = {"manifest": "Manifest", "data": "Data Files", "puffin": "Puffin"}
+
+    # n_groups = len(sizes) * len(file_types), 3 bars per group (one per BF mode)
+    n_groups = len(sizes) * len(file_types)
+    offsets, ticks, group_width = group_positions(n_groups, 3)
     bar_width = 0.22
 
     own_fig = ax is None
     if own_fig:
-        fig, ax = plt.subplots(figsize=(10, 5))
-    legend_handles = []
+        fig, ax = plt.subplots(figsize=(12, 5))
 
     for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
-        rows     = data["disk_storage_bytes"][key]
-        puffin   = np.array([_bytes_to_mb(r["puffin_bytes"])            for r in rows])
-        manifest = np.array([_bytes_to_mb(r["manifest_overhead_bytes"]) for r in rows])
+        rows = data["disk_storage_bytes"][key]
+        values = []
+        for size_idx in range(len(sizes)):
+            r = rows[size_idx]
+            values.append(_bytes_to_mb(r.get("manifest_bytes", r.get("manifest_overhead_bytes", 0))))
+            values.append(_bytes_to_mb(r.get("data_bytes", 0)))
+            values.append(_bytes_to_mb(r.get("puffin_bytes", 0)))
+        ax.bar(offsets[i], np.array(values), bar_width, color=color)
 
-        ax.bar(offsets[i], puffin,   bar_width, color=color)
-        ax.bar(offsets[i], manifest, bar_width, bottom=puffin,
-               color=color, alpha=STACK_ALPHA_LIGHT)
-        legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
+    # Tick labels: "small\nManifest", "small\nData Files", "small\nPuffin", "large\n..." etc.
+    tick_labels = [f"{s}\n{file_labels[ft]}" for s in sizes for ft in file_types]
 
-    puffin_patch   = mpatches.Patch(facecolor="dimgray",                       label="Puffin file storage")
-    manifest_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Manifest overhead")
+    # Dashed divider between dataset size groups
+    for j in range(1, len(sizes)):
+        boundary = (ticks[j * len(file_types) - 1] + ticks[j * len(file_types)]) / 2
+        ax.axvline(boundary, color="gray", linewidth=0.8, linestyle="--", alpha=0.5)
 
-    color_legend = ax.legend(handles=legend_handles,               loc="upper left",   title="Bloom Filter Type")
-    ax.add_artist(color_legend)
-    ax.legend(         handles=[puffin_patch, manifest_patch], loc="upper center", title="Bar Segments")
-
+    ax.legend(handles=bf_color_legend_handles(), title="Bloom Filter Type")
     ax.set_xticks(ticks)
-    ax.set_xticklabels(sizes)
-    ax.set_xlabel("Dataset Size")
-    ax.set_ylabel("Additional Disk Usage (MB)")
-    ax.set_title("Disk Storage Added by Bloom Filters")
+    ax.set_xticklabels(tick_labels)
+    ax.set_xlabel("Dataset Size / File Type")
+    ax.set_ylabel("Disk Usage (MB)")
+    ax.set_title("Disk Storage by File Type")
     if own_fig:
         fig.tight_layout()
         save(fig, out_dir, "2_disk_storage.png", display_inline=display_inline)
