@@ -19,6 +19,7 @@
 package org.apache.iceberg.formats;
 
 import java.util.Map;
+import java.util.function.BiConsumer;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.io.CloseableIterable;
@@ -118,6 +119,15 @@ public interface ReadBuilder<D, S> {
 
   /** Sets a mapping from external schema names to Iceberg type IDs. */
   ReadBuilder<D, S> withNameMapping(NameMapping nameMapping);
+
+  /**
+   * Optional: report row group metrics (total, skipped) when reading Parquet files. Formats that
+   * don't support this ignore the consumer. The consumer is called per file with (totalRowGroups,
+   * skippedRowGroups).
+   */
+  default ReadBuilder<D, S> rowGroupMetricsConsumer(BiConsumer<Long, Long> consumer) {
+    return this;
+  }
 
   /** Builds the reader. */
   CloseableIterable<D> build();

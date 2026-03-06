@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.exceptions.RuntimeIOException;
@@ -49,6 +50,7 @@ public class VectorizedParquetReader<T> extends CloseableGroup implements Closea
   private final boolean caseSensitive;
   private final int batchSize;
   private final NameMapping nameMapping;
+  private final BiConsumer<Long, Long> rowGroupMetricsConsumer;
 
   public VectorizedParquetReader(
       InputFile input,
@@ -60,6 +62,21 @@ public class VectorizedParquetReader<T> extends CloseableGroup implements Closea
       boolean reuseContainers,
       boolean caseSensitive,
       int maxRecordsPerBatch) {
+    this(input, expectedSchema, options, readerFunc, nameMapping, filter, reuseContainers,
+        caseSensitive, maxRecordsPerBatch, null);
+  }
+
+  public VectorizedParquetReader(
+      InputFile input,
+      Schema expectedSchema,
+      ParquetReadOptions options,
+      Function<MessageType, VectorizedReader<?>> readerFunc,
+      NameMapping nameMapping,
+      Expression filter,
+      boolean reuseContainers,
+      boolean caseSensitive,
+      int maxRecordsPerBatch,
+      BiConsumer<Long, Long> rowGroupMetricsConsumer) {
     this.input = input;
     this.expectedSchema = expectedSchema;
     this.options = options;
@@ -70,6 +87,7 @@ public class VectorizedParquetReader<T> extends CloseableGroup implements Closea
     this.caseSensitive = caseSensitive;
     this.batchSize = maxRecordsPerBatch;
     this.nameMapping = nameMapping;
+    this.rowGroupMetricsConsumer = rowGroupMetricsConsumer;
   }
 
   private ReadConf conf = null;
@@ -88,6 +106,10 @@ public class VectorizedParquetReader<T> extends CloseableGroup implements Closea
               reuseContainers,
               caseSensitive,
               batchSize);
+      if (rowGroupMetricsConsumer != null) {
+        rowGroupMetricsConsumer.accept(
+            (long) readConf.totalRowGroups(), (long) readConf.skippedRowGroups());
+      }
       this.conf = readConf.copy();
       return readConf;
     }

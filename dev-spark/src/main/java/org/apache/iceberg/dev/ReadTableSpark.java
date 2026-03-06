@@ -159,7 +159,7 @@ public class ReadTableSpark {
 
     Map<String, Long> scanMetrics = getScanMetrics(t3.dataFrame);
     ReadMetrics metrics = new ReadMetrics();
-    metrics.skippedRowGroups = getIntMetric(scanMetrics, "skippedRowGroups");
+    metrics.allSkippedRowGroups = getIntMetric(scanMetrics, "skippedRowGroups");
     metrics.manifestSkippedDataFiles = getIntMetric(scanMetrics, "skippedDataFiles");
     metrics.bloomFilterSkippedDataFiles = getIntMetric(scanMetrics, "bloomFilterSkippedDataFiles");
     metrics.totalRowGroups = getIntMetric(scanMetrics, "totalRowGroups");

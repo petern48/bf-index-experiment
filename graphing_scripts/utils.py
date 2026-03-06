@@ -70,7 +70,7 @@ def bf_color_legend_handles():
 # Chart 1: Pruning (Read)
 # ---------------------------------------------------------------------------
 def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool = False, ax=None):
-    """Stacked bar showing skipped vs read row groups."""
+    """Stacked bar: height = total row groups. Bottom = read (darker), top = skipped (lighter)."""
     sizes = data["dataset_sizes"]
     offsets, ticks, _ = group_positions(len(sizes), 3)
     bar_width = 0.22
@@ -81,18 +81,22 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
     legend_handles = []
 
     for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
-        rows    = data["pruning_read"][key]
-        totals  = np.array([r["total_row_groups"]  for r in rows], dtype=float)
-        skipped = np.array([r["skipped_row_groups"] for r in rows], dtype=float)
-        read_rg = totals - skipped
+        rows = data["pruning_read"][key]
+        totals = np.array([r["total_row_groups"] for r in rows], dtype=float)
+        skipped = np.array(
+            [r.get("skipped_row_groups", r.get("all_skipped_row_groups", 0)) for r in rows],  # TODO: finalize on the real name
+            dtype=float,
+        )
+        read_row_groups = totals - skipped
+        assert all(totals >= skipped), f"Note: total row groups < skipped row groups for {key}"
 
-        ax.bar(offsets[i], skipped, bar_width, color=color)
-        ax.bar(offsets[i], read_rg, bar_width, bottom=skipped,
+        ax.bar(offsets[i], read_row_groups, bar_width, color=color)
+        ax.bar(offsets[i], skipped, bar_width, bottom=read_row_groups,
                color=color, alpha=STACK_ALPHA_LIGHT)
         legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
 
-    skip_patch = mpatches.Patch(facecolor="dimgray",                       label="Skipped (pruned)")
-    read_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Read (not pruned)")
+    read_patch = mpatches.Patch(facecolor="dimgray", label="Read")
+    skip_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Skipped")
 
     color_legend = ax.legend(handles=legend_handles,         loc="upper left",   title="Bloom Filter Type")
     ax.add_artist(color_legend)
@@ -152,7 +156,7 @@ def plot_pruning_read_datafiles(data: dict, out_dir: str, display_inline: bool =
     ax.set_xticklabels(sizes)
     ax.set_xlabel("Dataset Size")
     ax.set_ylabel("Data Files")
-    ax.set_title("Pruning – Data Files Read vs Skipped (Read Path)")
+    ax.set_title("Pruning - Data Files Read vs Skipped (Read Path)")
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{int(x):,}"))
     if own_fig:
         fig.tight_layout()

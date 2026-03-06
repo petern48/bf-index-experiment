@@ -21,6 +21,7 @@ package org.apache.iceberg.parquet;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import org.apache.iceberg.FileContent;
 import org.apache.iceberg.FileFormat;
@@ -292,6 +293,12 @@ public class ParquetFormatModel<D, S, R>
     @Override
     public ReadBuilder<D, S> withNameMapping(NameMapping nameMapping) {
       internal.withNameMapping(nameMapping);
+      return this;
+    }
+
+    @Override
+    public ReadBuilder<D, S> rowGroupMetricsConsumer(BiConsumer<Long, Long> consumer) {
+      internal.rowGroupMetricsConsumer(consumer);
       return this;
     }
 

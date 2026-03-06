@@ -11,7 +11,7 @@ public class ReadMetrics {
   public Integer bloomFilterSkippedDataFiles;
   public Long totalDataFileSizeBytes;
   public Integer totalRowGroups;
-  public Integer skippedRowGroups;
+  public Integer allSkippedRowGroups;
   public Long puffinStatsFileSizeBytes;
   public Long puffinStatsFooterSizeBytes;
   public Integer numSplits;

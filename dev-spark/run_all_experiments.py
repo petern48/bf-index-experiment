@@ -93,10 +93,16 @@ def build_results(
             if not pair:
                 continue
             w, r = pair
-            total_rg = w.get("totalRowGroups") if w.get("totalRowGroups") is not None else r.get("totalRowGroups")
+            # write_rg = w.get("totalRowGroups")
+            # read_rg = r.get("totalRowGroups")  # don't use totalRowGroups from read, it's not right (it's less than that of write)
+            total_row_groups = w.get("totalRowGroups")
+            # if write_rg is not None:
+            #     total_rg = write_rg
+            #     if read_rg is not None and write_rg != read_rg:
+            #         raise Exception(f"Note: totalRowGroups differs (write={write_rg}, read={read_rg});")
             pruning_read[key].append({
-                "total_row_groups": _int(total_rg),
-                "skipped_row_groups": _int(r.get("skippedRowGroups")),
+                "total_row_groups": _int(total_row_groups),
+                "skipped_row_groups": _int(r.get("allSkippedRowGroups")),
                 "total_data_files": _int(w.get("totalDataFiles")),
                 "manifest_skipped_data_files": _int(r.get("manifestSkippedDataFiles")),
                 "bloom_filter_skipped_data_files": _int(r.get("bloomFilterSkippedDataFiles")),

@@ -19,6 +19,7 @@
 package org.apache.iceberg.spark.source;
 
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.annotation.Nonnull;
 import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.MetadataColumns;
@@ -48,6 +49,8 @@ import org.apache.spark.sql.vectorized.ColumnarBatch;
 abstract class BaseBatchReader<T extends ScanTask> extends BaseReader<ColumnarBatch, T> {
   private final ParquetBatchReadConf parquetConf;
   private final OrcBatchReadConf orcConf;
+  private final AtomicLong totalRowGroups = new AtomicLong(0);
+  private final AtomicLong skippedRowGroups = new AtomicLong(0);
 
   BaseBatchReader(
       Table table,
@@ -94,6 +97,11 @@ abstract class BaseBatchReader<T extends ScanTask> extends BaseReader<ColumnarBa
             // allocating memory.
             .reuseContainers()
             .withNameMapping(nameMapping())
+            .rowGroupMetricsConsumer(
+                (total, skipped) -> {
+                  totalRowGroups.addAndGet(total);
+                  skippedRowGroups.addAndGet(skipped);
+                })
             .build();
 
     return CloseableIterable.transform(iterable, new BatchDeleteFilter(deleteFilter)::filterBatch);
@@ -101,6 +109,14 @@ abstract class BaseBatchReader<T extends ScanTask> extends BaseReader<ColumnarBa
 
   private boolean useComet() {
     return parquetConf != null && parquetConf.readerType() == ParquetReaderType.COMET;
+  }
+
+  protected long totalRowGroups() {
+    return totalRowGroups.get();
+  }
+
+  protected long skippedRowGroups() {
+    return skippedRowGroups.get();
   }
 
   @VisibleForTesting

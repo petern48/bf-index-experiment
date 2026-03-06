@@ -44,4 +44,8 @@ public class TaskTotalRowGroups implements CustomTaskMetric {
     long value = counter != null ? counter.value() : 0L;
     return new TaskTotalRowGroups(value);
   }
+
+  public static TaskTotalRowGroups of(long value) {
+    return new TaskTotalRowGroups(value);
+  }
 }

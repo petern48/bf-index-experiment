@@ -1187,6 +1187,12 @@ public class Parquet {
     private ByteBuffer fileAADPrefix = null;
     private Class<? extends StructLike> rootType = null;
     private Map<Integer, Class<? extends StructLike>> customTypes = Maps.newHashMap();
+    private BiConsumer<Long, Long> rowGroupMetricsConsumer = null;
+
+    public ReadBuilder rowGroupMetricsConsumer(BiConsumer<Long, Long> consumer) {
+      this.rowGroupMetricsConsumer = consumer;
+      return this;
+    }
 
     public interface ReaderFunction {
       Function<MessageType, ParquetValueReader<?>> apply();
@@ -1484,7 +1490,8 @@ public class Parquet {
               filter,
               reuseContainers,
               caseSensitive,
-              maxRecordsPerBatch);
+              maxRecordsPerBatch,
+              rowGroupMetricsConsumer);
         } else {
           Function<MessageType, ParquetValueReader<?>> readBuilder =
               readerFunction

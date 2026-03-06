@@ -44,4 +44,8 @@ public class TaskSkippedRowGroups implements CustomTaskMetric {
     long value = counter != null ? counter.value() : 0L;
     return new TaskSkippedRowGroups(value);
   }
+
+  public static TaskSkippedRowGroups of(long value) {
+    return new TaskSkippedRowGroups(value);
+  }
 }
