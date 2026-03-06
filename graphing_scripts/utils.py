@@ -148,7 +148,7 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
         mpatches.Patch(color=c[1], label="Skipped (file-level BF)"),
         mpatches.Patch(color=c[0], label="Read"),
     ]
-    ax.legend(handles=legend_handles, loc="upper right")
+    ax.legend(handles=legend_handles, loc="upper left")
 
     ax.set_xticks(ticks)
     ax.set_xticklabels(tick_labels)
@@ -192,7 +192,7 @@ def plot_pruning_read_datafiles(data: dict, out_dir: str, display_inline: bool =
         mpatches.Patch(color=c[1], label="Skipped (file bloom filter)"),
         mpatches.Patch(color=c[0], label="Read"),
     ]
-    ax.legend(handles=legend_handles, loc="upper right")
+    ax.legend(handles=legend_handles, loc="upper left")
 
     ax.set_xticks(ticks)
     ax.set_xticklabels(tick_labels)
@@ -287,7 +287,7 @@ def plot_memory_read(data: dict, out_dir: str, display_inline: bool = False, ax=
     ax.legend(handles=[
         mpatches.Patch(color=c[0], label="Puffin"),
         mpatches.Patch(color=c[1], label="Total"),
-    ], loc="upper right")
+    ], loc="upper left")
     ax.set_xticks(ticks)
     ax.set_xticklabels(tick_labels)
     ax.set_xlabel("Bloom Filter Type")
@@ -332,7 +332,7 @@ def plot_memory_write(data: dict, out_dir: str, display_inline: bool = False, ax
     ax.legend(handles=[
         mpatches.Patch(color=COLOR_DATA, label="Data"),
         mpatches.Patch(color=COLOR_PUFFIN, label="Puffin"),
-    ], loc="upper right")
+    ], loc="upper left")
     ax.set_xticks(ticks)
     ax.set_xticklabels([BF_LABELS[k] for k in BF_KEYS])
     ax.set_xlabel("Bloom Filter Type")
@@ -403,7 +403,7 @@ def plot_time_write(data: dict, out_dir: str, display_inline: bool = False, ax=N
     ax.legend(handles=[
         mpatches.Patch(color=c[0], label="Data write"),
         mpatches.Patch(color=c[1], label="Puffin write"),
-    ], loc="upper right")
+    ], loc="upper left")
     ax.set_xticks(ticks)
     ax.set_xticklabels(tick_labels)
     ax.set_xlabel("Bloom Filter Type")
