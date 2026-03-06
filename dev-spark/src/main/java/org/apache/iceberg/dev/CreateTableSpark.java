@@ -249,34 +249,47 @@ public class CreateTableSpark {
     table.refresh();
 
     // Phase 2: puffin file write (ComputeTableStats) — no extra work
-    MemoryTracker.TrackedResult<ComputeTableStats.Result> puffinTracked =
-        MemoryTracker.trackWithResult(
-            () ->
-                SparkActions.get()
-                    .computeTableStats(table)
-                    .columns("id", "data")
-                    .execute());
-    float writePuffinMaxMemory = (float) puffinTracked.metrics().peakMemoryMB();
-    float writePuffinDuration = (float) puffinTracked.metrics().durationMs();
-    System.out.println("Puffin write: " + puffinTracked.metrics());
+    // Metrics default to zero for non-file_level bloom modes
+    float writePuffinMaxMemory = 0;
+    float writePuffinDuration = 0;
+    long puffinDiskSizeInBytes = 0;
+    long puffinFooterSizeInBytes = 0;
 
-    ComputeTableStats.Result result = puffinTracked.value();
+    if (bloomMode.equals("file_level")) {
+        MemoryTracker.TrackedResult<ComputeTableStats.Result> puffinTracked =
+            MemoryTracker.trackWithResult(
+                () ->
+                    SparkActions.get()
+                        .computeTableStats(table)
+                        .columns("id", "data")
+                        .execute());
+    
+        System.out.println("Puffin write: " + puffinTracked.metrics());
 
-    long ndvBlobs = result.statisticsFile().blobMetadata().stream()
-        .filter(m -> m.properties().containsKey("ndv"))
-        .count();
-    long bloomBlobs = result.statisticsFile().blobMetadata().stream()
-        .filter(m -> m.properties().containsKey("data-file-path"))
-        .count();
-    System.out.println("Puffin stats file: " + result.statisticsFile().path());
-    System.out.println("  NDV blobs:               " + ndvBlobs);
-    System.out.println("  File bloom filter blobs: " + bloomBlobs);
-    if (bloomBlobs > 0) {
-      System.out.println("  Sample bloom filter files:");
-      result.statisticsFile().blobMetadata().stream()
-          .filter(m -> m.properties().containsKey("data-file-path"))
-          .limit(3)
-          .forEach(m -> System.out.println("    " + m.properties().get("data-file-path")));
+        ComputeTableStats.Result result = puffinTracked.value();
+
+        // Save metrics
+        writePuffinMaxMemory = (float) puffinTracked.metrics().peakMemoryMB();
+        writePuffinDuration = (float) puffinTracked.metrics().durationMs();
+        puffinDiskSizeInBytes = result.statisticsFile().fileSizeInBytes();
+        puffinFooterSizeInBytes = result.statisticsFile().fileFooterSizeInBytes();
+
+        long ndvBlobs = result.statisticsFile().blobMetadata().stream()
+            .filter(m -> m.properties().containsKey("ndv"))
+            .count();
+        long bloomBlobs = result.statisticsFile().blobMetadata().stream()
+            .filter(m -> m.properties().containsKey("data-file-path"))
+            .count();
+        System.out.println("Puffin stats file: " + result.statisticsFile().path());
+        System.out.println("  NDV blobs:               " + ndvBlobs);
+        System.out.println("  File bloom filter blobs: " + bloomBlobs);
+        if (bloomBlobs > 0) {
+        System.out.println("  Sample bloom filter files:");
+        result.statisticsFile().blobMetadata().stream()
+            .filter(m -> m.properties().containsKey("data-file-path"))
+            .limit(3)
+            .forEach(m -> System.out.println("    " + m.properties().get("data-file-path")));
+        }
     }
 
     // Count data files, row groups, and total data file disk size from manifest metadata (no file I/O)
@@ -313,8 +326,8 @@ public class CreateTableSpark {
     metrics.totalRowGroups = totalRowGroups;
     metrics.dataFileDiskSizeInBytes = totalDataFileSizeBytes;
     metrics.manifestDiskSizeInBytes = totalManifestSizeBytes;
-    metrics.puffinDiskSizeInBytes = result.statisticsFile().fileSizeInBytes();
-    metrics.puffinFooterSizeInBytes = result.statisticsFile().fileFooterSizeInBytes();
+    metrics.puffinDiskSizeInBytes = puffinDiskSizeInBytes;
+    metrics.puffinFooterSizeInBytes = puffinFooterSizeInBytes;
     metrics.writeDataMaxMemory = writeDataMaxMemory;
     metrics.writePuffinMaxMemory = writePuffinMaxMemory;
     metrics.writeDataDuration = writeDataDuration;
