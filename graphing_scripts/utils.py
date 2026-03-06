@@ -33,6 +33,14 @@ STACK_ALPHA_LIGHT = 0.35  # lightest shade for the portion of stacked bars
 STACK_ALPHA_MEDIUM = 0.55  # medium shade
 STACK_ALPHA_DARK = 0.75  # darker shade for 4-segment stacks
 
+# Segment colors for stacked bars: same color per segment across all bars
+# Row groups: Read, Skipped (row-group BF), Skipped (file-level BF), Other
+SEGMENT_COLORS_4 = ["#1565c0", "#ff8f00", "#2e7d32", "#7b1fa2"]  # blue, amber, green, purple
+# Datafiles: Read, Skipped (manifest), Skipped (bloom filter)
+SEGMENT_COLORS_3 = ["#1565c0", "#ff8f00", "#2e7d32"]
+# Two segments: main, puffin/secondary
+SEGMENT_COLORS_2 = ["#1565c0", "#00838f"]  # blue, cyan
+
 STACK_COLORS = {
     "metadata": "#8da0cb",  # periwinkle
     "puffin":   "#fc8d62",  # coral
@@ -54,6 +62,16 @@ def group_positions(n_groups: int, n_bars: int, bar_width: float = 0.22, gap: fl
     offsets = [group_starts + i * bar_width for i in range(n_bars)]
     tick_centers = group_starts + (n_bars * bar_width) / 2
     return offsets, tick_centers, group_width
+
+
+def bar_positions_3_by_bf(bar_width: float = 0.28, gap: float = 0.12):
+    """For 3 bars (one per bloom filter type): return (x_positions, tick_centers, tick_labels).
+    Use when x-axis should label each bar by bloom filter type."""
+    step = bar_width + gap
+    x_positions = np.array([0, step, 2 * step])
+    tick_centers = x_positions + bar_width / 2
+    tick_labels = [BF_LABELS[k] for k in BF_KEYS]
+    return x_positions, tick_centers, tick_labels, bar_width
 
 
 def save(fig, out_dir: str, name: str, display_inline: bool = False, dataset_size: str = None):
@@ -94,24 +112,19 @@ def bf_color_legend_handles():
 # ---------------------------------------------------------------------------
 def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool = False, ax=None, dataset_size: str = None):
     """Stacked bar: height = total row groups (from write). Segments (bottom to top):
-    Read (instrumented), Row-group BF skips, File-level BF skips, Other (= total - read - rg_bf - file_bf)."""
-    sizes = data["dataset_sizes"]
-    offsets, ticks, _ = group_positions(len(sizes), 3)
-    bar_width = 0.22
+    Read (instrumented), Row-group BF skips, File-level BF skips, Other (= total - read - rg_bf - file_bf).
+    All bars use same segment colors; x-axis labels = bloom filter type."""
+    x_pos, ticks, tick_labels, bar_width = bar_positions_3_by_bf()
+    c = SEGMENT_COLORS_4
 
     own_fig = ax is None
     if own_fig:
         fig, ax = plt.subplots(figsize=(10, 5))
-    legend_handles = []
 
-    for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
+    for i, key in enumerate(BF_KEYS):
         rows = data["pruning_read"][key]
         totals = np.array([r["total_row_groups"] for r in rows], dtype=float)
-        read_row_groups = np.array([r.get("row_groups_read") for r in rows], dtype=float)
-        # read_row_groups = totals - skipped_rg - file_bf_skipped_rg
-        # assert all(totals >= skipped_rg + file_bf_skipped_rg), (
-        #     f"Note: total row groups < row_group_bf_skipped + file_bf_skipped for {key}"
-        # )
+        read_rg = np.array([r.get("row_groups_read") for r in rows], dtype=float)
         skipped_rg = np.array(
             [r.get("skipped_row_groups", r.get("all_skipped_row_groups", 0)) for r in rows],
             dtype=float,
@@ -120,31 +133,26 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
             [r.get("row_groups_skipped_by_file_bloom_filter", 0) for r in rows],
             dtype=float,
         )
-        other_rg = totals - read_row_groups - skipped_rg - file_bf_skipped_rg
+        other_rg = totals - read_rg - skipped_rg - file_bf_skipped_rg
         assert all(other_rg >= 0), f"Note: other row groups < 0 for {key}"
 
-        ax.bar(offsets[i], read_row_groups, bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(offsets[i], skipped_rg, bar_width, bottom=read_row_groups,
-               color=color, alpha=STACK_ALPHA_DARK, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(offsets[i], file_bf_skipped_rg, bar_width, bottom=read_row_groups + skipped_rg,
-               color=color, alpha=STACK_ALPHA_MEDIUM, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(offsets[i], other_rg, bar_width, bottom=read_row_groups + skipped_rg + file_bf_skipped_rg,
-               color=color, alpha=STACK_ALPHA_LIGHT, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
+        r, s, f, o = read_rg[0], skipped_rg[0], file_bf_skipped_rg[0], other_rg[0]
+        ax.bar(x_pos[i], r, bar_width, color=c[0], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], s, bar_width, bottom=r, color=c[1], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], f, bar_width, bottom=r + s, color=c[2], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], o, bar_width, bottom=r + s + f, color=c[3], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
 
-    read_patch = mpatches.Patch(facecolor="dimgray", label="Read")
-    skip_rg_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_DARK, label="Skipped (row-group BF)")
-    skip_bf_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_MEDIUM, label="Skipped (file-level BF)")
-    other_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Other (e.g. manifest)")
-
-    color_legend = ax.legend(handles=legend_handles, loc="upper left", title="Bloom Filter Type")
-    ax.add_artist(color_legend)
-    ax.legend(handles=[read_patch, skip_rg_patch, skip_bf_patch, other_patch],
-              loc="upper center", title="Bar Segments")
+    legend_handles = [
+        mpatches.Patch(color=c[0], label="Read"),
+        mpatches.Patch(color=c[1], label="Skipped (row-group BF)"),
+        mpatches.Patch(color=c[2], label="Skipped (file-level BF)"),
+        mpatches.Patch(color=c[3], label="Other (e.g. manifest)"),
+    ]
+    ax.legend(handles=legend_handles, loc="upper right")
 
     ax.set_xticks(ticks)
-    ax.set_xticklabels(sizes)
-    ax.set_xlabel("Dataset Size")
+    ax.set_xticklabels(tick_labels)
+    ax.set_xlabel("Bloom Filter Type")
     ax.set_ylabel("Row Groups")
     ax.set_title("Pruning - Row Groups Read vs Skipped (Read Path)")
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{int(x):,}"))
@@ -155,46 +163,39 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
 
 def plot_pruning_read_datafiles(data: dict, out_dir: str, display_inline: bool = False, ax=None, dataset_size: str = None):
     """Stacked bar: total height = totalDataFiles. Bottom = read, middle = skipped (manifest), top = bloom filter skipped.
-    readDataFiles = total - manifestSkipped - bloomFilterSkipped (mutually exclusive phases)."""
-    sizes = data["dataset_sizes"]
-    offsets, ticks, _ = group_positions(len(sizes), 3)
-    bar_width = 0.22
+    All bars use same segment colors; x-axis labels = bloom filter type."""
+    x_pos, ticks, tick_labels, bar_width = bar_positions_3_by_bf()
+    c = SEGMENT_COLORS_3
 
     own_fig = ax is None
     if own_fig:
         fig, ax = plt.subplots(figsize=(10, 5))
-    legend_handles = []
 
-    for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
+    for i, key in enumerate(BF_KEYS):
         rows = data["pruning_read"][key]
         total = np.array([r["total_data_files"] for r in rows], dtype=float)
         manifest_skipped = np.array(
-            [r.get("manifest_skipped_data_files", r.get("all_skipped_data_files", r.get("skipped_data_files", 0))) for r in rows],  # TODO: revisit which one is the actual name
+            [r.get("manifest_skipped_data_files", r.get("all_skipped_data_files", r.get("skipped_data_files", 0))) for r in rows],
             dtype=float,
         )
         bloom_skipped = np.array([r.get("bloom_filter_skipped_data_files", 0) for r in rows], dtype=float)
-        # readDataFiles = total - manifestSkipped - bloomFilterSkipped (mutually exclusive phases)
         read_df = np.maximum(0, total - manifest_skipped - bloom_skipped)
-        other_skipped = manifest_skipped  # manifest-level skips (partition/stats)
+        rd, ms, bs = read_df[0], manifest_skipped[0], bloom_skipped[0]
 
-        ax.bar(offsets[i], read_df, bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(offsets[i], other_skipped, bar_width, bottom=read_df,
-               color=color, alpha=STACK_ALPHA_MEDIUM, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(offsets[i], bloom_skipped, bar_width, bottom=read_df + other_skipped,
-               color=color, alpha=STACK_ALPHA_LIGHT, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
+        ax.bar(x_pos[i], rd, bar_width, color=c[0], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], ms, bar_width, bottom=rd, color=c[1], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], bs, bar_width, bottom=rd + ms, color=c[2], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
 
-    read_patch = mpatches.Patch(facecolor="dimgray",                       label="Read")
-    other_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_MEDIUM, label="Skipped (manifest)")
-    bloom_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Skipped (bloom filter)")
-
-    color_legend = ax.legend(handles=legend_handles,         loc="upper left",   title="Bloom Filter Type")
-    ax.add_artist(color_legend)
-    ax.legend(handles=[read_patch, other_patch, bloom_patch], loc="upper center", title="Bar Segments")
+    legend_handles = [
+        mpatches.Patch(color=c[0], label="Read"),
+        mpatches.Patch(color=c[1], label="Skipped (manifest)"),
+        mpatches.Patch(color=c[2], label="Skipped (bloom filter)"),
+    ]
+    ax.legend(handles=legend_handles, loc="upper right")
 
     ax.set_xticks(ticks)
-    ax.set_xticklabels(sizes)
-    ax.set_xlabel("Dataset Size")
+    ax.set_xticklabels(tick_labels)
+    ax.set_xlabel("Bloom Filter Type")
     ax.set_ylabel("Data Files")
     ax.set_title("Pruning - Data Files Read vs Skipped (Read Path)")
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{int(x):,}"))
@@ -262,42 +263,33 @@ def plot_disk_storage(data: dict, out_dir: str, display_inline: bool = False, ax
 # Chart 3: Memory Usage (Read) - Read Memory Breakdown
 # ---------------------------------------------------------------------------
 def plot_memory_read(data: dict, out_dir: str, display_inline: bool = False, ax=None, dataset_size: str = None):
-    """Stacked bar: puffin read (subset) + rest of query. Total height = maxMemoryUsage.
-    Bottom = readPuffinMaxMemory, top = maxMemoryUsage - readPuffinMaxMemory."""
-    sizes = data["dataset_sizes"]
-    offsets, ticks, _ = group_positions(len(sizes), 3)
-    bar_width = 0.22
+    """Stacked bar: puffin read (subset) + rest of query. All bars use same segment colors; x-axis = bloom filter type."""
+    x_pos, ticks, tick_labels, bar_width = bar_positions_3_by_bf()
+    c = SEGMENT_COLORS_2
 
     own_fig = ax is None
     if own_fig:
         fig, ax = plt.subplots(figsize=(10, 5))
-    legend_handles = []
 
-    for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
+    for i, key in enumerate(BF_KEYS):
         rows = data["memory_read_mb"][key]
-        # Support both dict (max_mb, puffin_mb) and legacy float (total only)
         def _get(v, k):
             return v.get(k, 0) if isinstance(v, dict) else (v if k == "max_mb" else 0)
         max_mb = np.array([_get(r, "max_mb") for r in rows], dtype=float)
         puffin_mb = np.array([_get(r, "puffin_mb") for r in rows], dtype=float)
-        # Puffin is a subset of max; rest = max - puffin (clamp to avoid negatives)
         rest_mb = np.maximum(0, max_mb - puffin_mb)
+        p, r = puffin_mb[0], rest_mb[0]
 
-        ax.bar(offsets[i], puffin_mb, bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(offsets[i], rest_mb, bar_width, bottom=puffin_mb,
-               color=color, alpha=STACK_ALPHA_LIGHT, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
+        ax.bar(x_pos[i], p, bar_width, color=c[0], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], r, bar_width, bottom=p, color=c[1], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
 
-    puffin_patch = mpatches.Patch(facecolor="dimgray",                       label="Puffin")
-    rest_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Total")
-
-    color_legend = ax.legend(handles=legend_handles,         loc="upper left",   title="Bloom Filter Type")
-    ax.add_artist(color_legend)
-    ax.legend(         handles=[puffin_patch, rest_patch], loc="upper center", title="Bar Segments")
-
+    ax.legend(handles=[
+        mpatches.Patch(color=c[0], label="Puffin"),
+        mpatches.Patch(color=c[1], label="Total"),
+    ], loc="upper right")
     ax.set_xticks(ticks)
-    ax.set_xticklabels(sizes)
-    ax.set_xlabel("Dataset Size")
+    ax.set_xticklabels(tick_labels)
+    ax.set_xlabel("Bloom Filter Type")
     ax.set_ylabel("Peak Memory Usage (MB)")
     ax.set_title("Peak Memory Usage - Read Path")
     if own_fig:
@@ -309,40 +301,32 @@ def plot_memory_read(data: dict, out_dir: str, display_inline: bool = False, ax=
 # Chart 4: Memory Usage (Write) - Write Memory Breakdown
 # ---------------------------------------------------------------------------
 def plot_memory_write(data: dict, out_dir: str, display_inline: bool = False, ax=None, dataset_size: str = None):
-    """Stacked bar: data write + puffin write memory, similar to write time breakdown.
-    Bottom = data write, top = puffin write. Color per bloom filter type."""
-    sizes = data["dataset_sizes"]
-    offsets, ticks, _ = group_positions(len(sizes), 3)
-    bar_width = 0.22
+    """Stacked bar: data write + puffin write memory. All bars use same segment colors; x-axis = bloom filter type."""
+    x_pos, ticks, tick_labels, bar_width = bar_positions_3_by_bf()
+    c = SEGMENT_COLORS_2
 
     own_fig = ax is None
     if own_fig:
         fig, ax = plt.subplots(figsize=(10, 5))
-    legend_handles = []
 
-    for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
+    for i, key in enumerate(BF_KEYS):
         rows = data["memory_write_mb"][key]
-        # Support both dict (data_mb, puffin_mb) and legacy float (total only)
         def _get(v, k):
             return v.get(k, 0) if isinstance(v, dict) else (v if k == "data_mb" else 0)
         data_mb = np.array([_get(r, "data_mb") for r in rows], dtype=float)
         puffin_mb = np.array([_get(r, "puffin_mb") for r in rows], dtype=float)
+        d, p = data_mb[0], puffin_mb[0]
 
-        ax.bar(offsets[i], data_mb, bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(offsets[i], puffin_mb, bar_width, bottom=data_mb,
-               color=color, alpha=STACK_ALPHA_LIGHT, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
+        ax.bar(x_pos[i], d, bar_width, color=c[0], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], p, bar_width, bottom=d, color=c[1], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
 
-    data_patch = mpatches.Patch(facecolor="dimgray",                       label="Total")
-    puffin_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Puffin")
-
-    color_legend = ax.legend(handles=legend_handles,         loc="upper left",   title="Bloom Filter Type")
-    ax.add_artist(color_legend)
-    ax.legend(         handles=[data_patch, puffin_patch], loc="upper center", title="Bar Segments")
-
+    ax.legend(handles=[
+        mpatches.Patch(color=c[0], label="Total"),
+        mpatches.Patch(color=c[1], label="Puffin"),
+    ], loc="upper right")
     ax.set_xticks(ticks)
-    ax.set_xticklabels(sizes)
-    ax.set_xlabel("Dataset Size")
+    ax.set_xticklabels(tick_labels)
+    ax.set_xlabel("Bloom Filter Type")
     ax.set_ylabel("Peak Memory Usage (MB)")
     ax.set_title("Peak Memory Usage - Write Path")
     if own_fig:
@@ -354,39 +338,31 @@ def plot_memory_write(data: dict, out_dir: str, display_inline: bool = False, ax
 # Chart 5: Time (Read) - Read Time Breakdown
 # ---------------------------------------------------------------------------
 def plot_time_read(data: dict, out_dir: str, display_inline: bool = False, ax=None, dataset_size: str = None):
-    """Stacked bar: totalReadDuration as height, readPuffinDuration as subset (bottom).
-    Bottom = puffin read, top = rest of query. Color per bloom filter type."""
-    sizes = data["dataset_sizes"]
-    offsets, ticks, _ = group_positions(len(sizes), 3)
-    bar_width = 0.22
+    """Stacked bar: totalReadDuration as height, readPuffinDuration as subset. All bars use same segment colors; x-axis = bloom filter type."""
+    x_pos, ticks, tick_labels, bar_width = bar_positions_3_by_bf()
+    c = SEGMENT_COLORS_2
 
     own_fig = ax is None
     if own_fig:
         fig, ax = plt.subplots(figsize=(10, 5))
-    legend_handles = []
 
-    for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
+    for i, key in enumerate(BF_KEYS):
         rows = data["time_read_ms"][key]
         total_s = np.array([r.get("total_ms") or 0 for r in rows], dtype=float) / 1000
         puffin_s = np.array([r.get("puffin_ms", 0) for r in rows], dtype=float) / 1000
         rest_s = np.maximum(0, total_s - puffin_s)
+        r, p = rest_s[0], puffin_s[0]
 
-        # Match write time breakdown: bottom = Total (rest), top = Puffin (light)
-        ax.bar(offsets[i], rest_s, bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(offsets[i], puffin_s, bar_width, bottom=rest_s,
-               color=color, alpha=STACK_ALPHA_LIGHT, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
+        ax.bar(x_pos[i], r, bar_width, color=c[0], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], p, bar_width, bottom=r, color=c[1], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
 
-    total_patch = mpatches.Patch(facecolor="dimgray",                       label="Total")
-    puffin_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Puffin")
-
-    color_legend = ax.legend(handles=legend_handles,         loc="upper left",   title="Bloom Filter Type")
-    ax.add_artist(color_legend)
-    ax.legend(         handles=[total_patch, puffin_patch], loc="upper center", title="Bar Segments")
-
+    ax.legend(handles=[
+        mpatches.Patch(color=c[0], label="Total"),
+        mpatches.Patch(color=c[1], label="Puffin"),
+    ], loc="upper right")
     ax.set_xticks(ticks)
-    ax.set_xticklabels(sizes)
-    ax.set_xlabel("Dataset Size")
+    ax.set_xticklabels(tick_labels)
+    ax.set_xlabel("Bloom Filter Type")
     ax.set_ylabel("Time (seconds)")
     ax.set_title("Read Time Breakdown")
     if own_fig:
@@ -398,37 +374,30 @@ def plot_time_read(data: dict, out_dir: str, display_inline: bool = False, ax=No
 # Chart 6: Time (Write) - Write Time Breakdown
 # ---------------------------------------------------------------------------
 def plot_time_write(data: dict, out_dir: str, display_inline: bool = False, ax=None, dataset_size: str = None):
-    """Stacked bar: data write + puffin write time, similar to pruning datafiles.
-    Bottom = dataWriteDuration, top = puffinWriteDuration. Color per bloom filter type."""
-    sizes = data["dataset_sizes"]
-    offsets, ticks, _ = group_positions(len(sizes), 3)
-    bar_width = 0.22
+    """Stacked bar: data write + puffin write time. All bars use same segment colors; x-axis = bloom filter type."""
+    x_pos, ticks, tick_labels, bar_width = bar_positions_3_by_bf()
+    c = SEGMENT_COLORS_2
 
     own_fig = ax is None
     if own_fig:
         fig, ax = plt.subplots(figsize=(10, 5))
-    legend_handles = []
 
-    for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
+    for i, key in enumerate(BF_KEYS):
         rows = data["time_write_ms"][key]
         data_s = np.array([r.get("data_ms", 0) for r in rows], dtype=float) / 1000
         puffin_s = np.array([r.get("puffin_ms", 0) for r in rows], dtype=float) / 1000
+        d, p = data_s[0], puffin_s[0]
 
-        ax.bar(offsets[i], data_s, bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(offsets[i], puffin_s, bar_width, bottom=data_s,
-               color=color, alpha=STACK_ALPHA_LIGHT, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
+        ax.bar(x_pos[i], d, bar_width, color=c[0], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], p, bar_width, bottom=d, color=c[1], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
 
-    data_patch = mpatches.Patch(facecolor="dimgray",                       label="Data write")
-    puffin_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Puffin write")
-
-    color_legend = ax.legend(handles=legend_handles,         loc="upper left",   title="Bloom Filter Type")
-    ax.add_artist(color_legend)
-    ax.legend(         handles=[data_patch, puffin_patch], loc="upper center", title="Bar Segments")
-
+    ax.legend(handles=[
+        mpatches.Patch(color=c[0], label="Data write"),
+        mpatches.Patch(color=c[1], label="Puffin write"),
+    ], loc="upper right")
     ax.set_xticks(ticks)
-    ax.set_xticklabels(sizes)
-    ax.set_xlabel("Dataset Size")
+    ax.set_xticklabels(tick_labels)
+    ax.set_xlabel("Bloom Filter Type")
     ax.set_ylabel("Time (seconds)")
     ax.set_title("Write Time Breakdown")
     if own_fig:
