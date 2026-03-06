@@ -112,15 +112,14 @@ def build_results(
                 "data_mb": _n(w.get("writeDataMaxMemory")),
                 "puffin_mb": _n(w.get("writePuffinMaxMemory")),
             })
-            # Read durations: totalReadDuration from ReadTableSpark is in ms; others may be sec
+            # Read durations: totalReadDuration (bar height), readPuffinDuration (subset)
             total_read_ms = r.get("totalReadDuration")
             if total_read_ms is not None:
                 total_read_ms = round(_n(total_read_ms))
+            puffin_ms = _n(r.get("readPuffinDuration"))
             time_read_ms[key].append({
-                "metadata_ms": sec_to_ms(r.get("manifestReadDuration")),
-                "puffin_ms": sec_to_ms(r.get("puffinReadDuration")),
-                "data_ms": sec_to_ms(r.get("datafileReadDuration")),
                 "total_ms": total_read_ms,
+                "puffin_ms": puffin_ms,
             })
             total_write_ms = w.get("totalWriteDuration")
             if total_write_ms is not None:

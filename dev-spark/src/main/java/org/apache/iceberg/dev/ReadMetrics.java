@@ -18,7 +18,7 @@ public class ReadMetrics {
   // Memory / durations — not provided by Spark scan metrics
   public Float maxMemoryUsage;
   public Float readPuffinMaxMemory;
-  public Float puffinReadDuration;
+  public Float readPuffinDuration;
   public Float manifestReadDuration;
   public Float datafileReadDuration;
   public Float totalReadDuration;
