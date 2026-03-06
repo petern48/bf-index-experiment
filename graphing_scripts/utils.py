@@ -70,7 +70,8 @@ def bf_color_legend_handles():
 # Chart 1: Pruning (Read)
 # ---------------------------------------------------------------------------
 def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool = False, ax=None):
-    """Stacked bar: height = total row groups. Bottom = read (darker), top = skipped (lighter)."""
+    """Stacked bar: height = total row groups. Bottom = read (darker), middle = skipped (row-group BF),
+    top = skipped (file-level BF)."""
     sizes = data["dataset_sizes"]
     offsets, ticks, _ = group_positions(len(sizes), 3)
     bar_width = 0.22
@@ -83,24 +84,33 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
     for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
         rows = data["pruning_read"][key]
         totals = np.array([r["total_row_groups"] for r in rows], dtype=float)
-        skipped = np.array(
-            [r.get("skipped_row_groups", r.get("all_skipped_row_groups", 0)) for r in rows],  # TODO: finalize on the real name
+        skipped_rg = np.array(
+            [r.get("skipped_row_groups", r.get("all_skipped_row_groups", 0)) for r in rows],
             dtype=float,
         )
-        read_row_groups = totals - skipped
-        assert all(totals >= skipped), f"Note: total row groups < skipped row groups for {key}"
+        file_bf_skipped_rg = np.array(
+            [r.get("row_groups_skipped_by_file_bloom_filter", 0) for r in rows],
+            dtype=float,
+        )
+        read_row_groups = totals - skipped_rg - file_bf_skipped_rg
+        assert all(totals >= skipped_rg + file_bf_skipped_rg), (
+            f"Note: total row groups < row_group_bf_skipped + file_bf_skipped for {key}"
+        )
 
         ax.bar(offsets[i], read_row_groups, bar_width, color=color)
-        ax.bar(offsets[i], skipped, bar_width, bottom=read_row_groups,
+        ax.bar(offsets[i], skipped_rg, bar_width, bottom=read_row_groups,
+               color=color, alpha=STACK_ALPHA_MEDIUM)
+        ax.bar(offsets[i], file_bf_skipped_rg, bar_width, bottom=read_row_groups + skipped_rg,
                color=color, alpha=STACK_ALPHA_LIGHT)
         legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
 
     read_patch = mpatches.Patch(facecolor="dimgray", label="Read")
-    skip_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Skipped")
+    skip_rg_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_MEDIUM, label="Skipped (row-group BF)")
+    skip_bf_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Skipped (file-level BF)")
 
     color_legend = ax.legend(handles=legend_handles,         loc="upper left",   title="Bloom Filter Type")
     ax.add_artist(color_legend)
-    ax.legend(         handles=[skip_patch, read_patch], loc="upper center", title="Bar Segments")
+    ax.legend(handles=[read_patch, skip_rg_patch, skip_bf_patch], loc="upper center", title="Bar Segments")
 
     ax.set_xticks(ticks)
     ax.set_xticklabels(sizes)

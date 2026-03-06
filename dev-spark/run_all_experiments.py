@@ -103,6 +103,9 @@ def build_results(
             pruning_read[key].append({
                 "total_row_groups": _int(total_row_groups),
                 "skipped_row_groups": _int(r.get("allSkippedRowGroups")),
+                "row_groups_skipped_by_file_bloom_filter": _int(
+                    r.get("rowGroupsSkippedByFileBloomFilter")
+                ),
                 "total_data_files": _int(w.get("totalDataFiles")),
                 "manifest_skipped_data_files": _int(r.get("manifestSkippedDataFiles")),
                 "bloom_filter_skipped_data_files": _int(r.get("bloomFilterSkippedDataFiles")),

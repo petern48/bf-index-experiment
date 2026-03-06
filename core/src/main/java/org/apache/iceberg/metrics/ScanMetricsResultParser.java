@@ -176,6 +176,11 @@ class ScanMetricsResultParser {
       CounterResultParser.toJson(metrics.bloomFilterSkippedDataFiles(), gen);
     }
 
+    if (null != metrics.rowGroupsSkippedByFileBloomFilter()) {
+      gen.writeFieldName(ScanMetrics.ROW_GROUPS_SKIPPED_BY_FILE_BLOOM_FILTER);
+      CounterResultParser.toJson(metrics.rowGroupsSkippedByFileBloomFilter(), gen);
+    }
+
     gen.writeEndObject();
   }
 
@@ -228,6 +233,8 @@ class ScanMetricsResultParser {
         .manifestReadDuration(TimerResultParser.fromJson(ScanMetrics.MANIFEST_READ_DURATION, json))
         .bloomFilterSkippedDataFiles(
             CounterResultParser.fromJson(ScanMetrics.BLOOM_FILTER_SKIPPED_DATA_FILES, json))
+        .rowGroupsSkippedByFileBloomFilter(
+            CounterResultParser.fromJson(ScanMetrics.ROW_GROUPS_SKIPPED_BY_FILE_BLOOM_FILTER, json))
         .build();
   }
 }

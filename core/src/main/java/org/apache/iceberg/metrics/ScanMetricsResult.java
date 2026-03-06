@@ -124,6 +124,12 @@ public interface ScanMetricsResult {
     return null;
   }
 
+  @Nullable
+  @Value.Default
+  default CounterResult rowGroupsSkippedByFileBloomFilter() {
+    return null;
+  }
+
   static ScanMetricsResult fromScanMetrics(ScanMetrics scanMetrics) {
     Preconditions.checkArgument(null != scanMetrics, "Invalid scan metrics: null");
     return ImmutableScanMetricsResult.builder()
@@ -156,6 +162,8 @@ public interface ScanMetricsResult {
         .manifestReadDuration(TimerResult.fromTimer(scanMetrics.manifestReadDuration()))
         .bloomFilterSkippedDataFiles(
             CounterResult.fromCounter(scanMetrics.bloomFilterSkippedDataFiles()))
+        .rowGroupsSkippedByFileBloomFilter(
+            CounterResult.fromCounter(scanMetrics.rowGroupsSkippedByFileBloomFilter()))
         .build();
   }
 }

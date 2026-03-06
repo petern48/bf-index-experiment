@@ -59,10 +59,12 @@ import org.apache.iceberg.spark.SparkReadConf;
 import org.apache.iceberg.spark.SparkSchemaUtil;
 import org.apache.iceberg.spark.SparkV2Filters;
 import org.apache.iceberg.spark.source.metrics.BloomFilterSkippedDataFiles;
+import org.apache.iceberg.spark.source.metrics.RowGroupsSkippedByFileBloomFilter;
 import org.apache.iceberg.spark.source.metrics.PuffinFilesRead;
 import org.apache.iceberg.spark.source.metrics.PuffinReadDuration;
 import org.apache.iceberg.spark.source.metrics.PuffinReadMaxMemory;
 import org.apache.iceberg.spark.source.metrics.TaskBloomFilterSkippedDataFiles;
+import org.apache.iceberg.spark.source.metrics.TaskRowGroupsSkippedByFileBloomFilter;
 import org.apache.iceberg.spark.source.metrics.TaskPuffinFilesRead;
 import org.apache.iceberg.spark.source.metrics.TaskPuffinReadDuration;
 import org.apache.iceberg.spark.source.metrics.TaskPuffinReadMaxMemory;
@@ -203,17 +205,29 @@ class SparkBatchQueryScan extends SparkPartitioningAwareScan<PartitionScanTask>
       return plannedTasks;
     }
 
-    List<PartitionScanTask> filtered =
+    Set<PartitionScanTask> filteredSet =
         plannedTasks.stream()
             .filter(
                 task ->
                     !task.isFileScanTask()
                         || evaluator.fileMightContain(task.asFileScanTask().file().location()))
-            .collect(Collectors.toList());
+            .collect(Collectors.toSet());
+
+    List<PartitionScanTask> filtered = plannedTasks.stream()
+        .filter(filteredSet::contains)
+        .collect(Collectors.toList());
 
     int skippedByBloomFilter = plannedTasks.size() - filtered.size();
     if (skippedByBloomFilter > 0) {
       puffinScanMetrics.bloomFilterSkippedDataFiles().increment(skippedByBloomFilter);
+      long skippedRowGroups = 0L;
+      for (PartitionScanTask task : plannedTasks) {
+        if (!filteredSet.contains(task) && task.isFileScanTask()) {
+          List<Long> offsets = task.asFileScanTask().file().splitOffsets();
+          skippedRowGroups += (offsets != null) ? offsets.size() : 0L;
+        }
+      }
+      puffinScanMetrics.rowGroupsSkippedByFileBloomFilter().increment(skippedRowGroups);
       LOG.info(
           "File bloom filter pruned {}/{} file(s) for table {}",
           skippedByBloomFilter,
@@ -375,6 +389,9 @@ class SparkBatchQueryScan extends SparkPartitioningAwareScan<PartitionScanTask>
     CounterResult bloomSkipped = puffinMetrics.bloomFilterSkippedDataFiles();
     all.add(new TaskBloomFilterSkippedDataFiles(bloomSkipped != null ? bloomSkipped.value() : 0L));
 
+    CounterResult bloomSkippedRg = puffinMetrics.rowGroupsSkippedByFileBloomFilter();
+    all.add(new TaskRowGroupsSkippedByFileBloomFilter(bloomSkippedRg != null ? bloomSkippedRg.value() : 0L));
+
     return all.toArray(new CustomTaskMetric[0]);
   }
 
@@ -386,6 +403,7 @@ class SparkBatchQueryScan extends SparkPartitioningAwareScan<PartitionScanTask>
     all.add(new PuffinReadDuration());
     all.add(new PuffinReadMaxMemory());
     all.add(new BloomFilterSkippedDataFiles());
+    all.add(new RowGroupsSkippedByFileBloomFilter());
     return all.toArray(new CustomMetric[0]);
   }
 }

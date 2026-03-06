@@ -51,6 +51,8 @@ public abstract class ScanMetrics {
   public static final String MANIFEST_FILES_READ = "manifest-files-read";
   public static final String MANIFEST_READ_DURATION = "manifest-read-duration";
   public static final String BLOOM_FILTER_SKIPPED_DATA_FILES = "bloom-filter-skipped-data-files";
+  public static final String ROW_GROUPS_SKIPPED_BY_FILE_BLOOM_FILTER =
+      "row-groups-skipped-by-file-bloom-filter";
 
   public static ScanMetrics noop() {
     return ScanMetrics.of(MetricsContext.nullMetrics());
@@ -193,6 +195,11 @@ public abstract class ScanMetrics {
   @Value.Derived
   public Counter bloomFilterSkippedDataFiles() {
     return metricsContext().counter(BLOOM_FILTER_SKIPPED_DATA_FILES);
+  }
+
+  @Value.Derived
+  public Counter rowGroupsSkippedByFileBloomFilter() {
+    return metricsContext().counter(ROW_GROUPS_SKIPPED_BY_FILE_BLOOM_FILTER);
   }
 
   public static ScanMetrics of(MetricsContext metricsContext) {

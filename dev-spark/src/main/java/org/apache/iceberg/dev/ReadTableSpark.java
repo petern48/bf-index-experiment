@@ -162,6 +162,8 @@ public class ReadTableSpark {
     metrics.allSkippedRowGroups = getIntMetric(scanMetrics, "skippedRowGroups");
     metrics.manifestSkippedDataFiles = getIntMetric(scanMetrics, "skippedDataFiles");
     metrics.bloomFilterSkippedDataFiles = getIntMetric(scanMetrics, "bloomFilterSkippedDataFiles");
+    metrics.rowGroupsSkippedByFileBloomFilter =
+        getIntMetric(scanMetrics, "rowGroupsSkippedByFileBloomFilter");
     metrics.totalRowGroups = getIntMetric(scanMetrics, "totalRowGroups");
     metrics.totalScanDataFiles = getIntMetric(scanMetrics, "totalScanDataFiles");
     metrics.resultDataFiles = getIntMetric(scanMetrics, "resultDataFiles");  // NOTE: this is misleading. this is (total - manifestSkipped) before BF skipping. do not use
@@ -282,6 +284,8 @@ public class ReadTableSpark {
     printMetric(metrics, "resultDataFiles", "Result data files");
     printMetric(metrics, "skippedDataFiles", "Skipped data files (manifest)");
     printMetric(metrics, "bloomFilterSkippedDataFiles", "Skipped data files (bloom filter)");
+    printMetric(
+        metrics, "rowGroupsSkippedByFileBloomFilter", "Skipped row groups (file-level bloom filter)");
     printMetric(metrics, "totalDataFileSize", "Total data file size (bytes)");
 
     // Row group metrics
