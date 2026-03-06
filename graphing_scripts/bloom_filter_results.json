@@ -70,27 +70,55 @@
     ],
     "file_level_bloom_filter": [
       {
-        "puffin_bytes": 5566880,
+        "puffin_bytes": 5566860,
         "manifest_overhead_bytes": 0
       },
       {
-        "puffin_bytes": 53637820,
+        "puffin_bytes": 53637720,
         "manifest_overhead_bytes": 0
       }
     ]
   },
   "memory_read_mb": {
     "no_bloom_filter": [
-      264.4174,
-      549.72046
+      140.42674,
+      404.98886
     ],
     "row_group_bloom_filter": [
-      201.82425,
-      447.65533
+      130.64847,
+      664.36597
     ],
     "file_level_bloom_filter": [
-      132.25475,
-      612.0763
+      134.85638,
+      524.1958
+    ]
+  },
+  "planning_memory_read_mb": {
+    "no_bloom_filter": [
+      121.94678,
+      274.23834
+    ],
+    "row_group_bloom_filter": [
+      93.41324,
+      238.36598
+    ],
+    "file_level_bloom_filter": [
+      130.39062,
+      524.1958
+    ]
+  },
+  "execution_memory_read_mb": {
+    "no_bloom_filter": [
+      18.47996,
+      130.75052
+    ],
+    "row_group_bloom_filter": [
+      37.23523,
+      425.99999
+    ],
+    "file_level_bloom_filter": [
+      4.46576,
+      0.0
     ]
   },
   "memory_write_mb": {
@@ -113,13 +141,13 @@
         "metadata_ms": 0,
         "puffin_ms": 0,
         "data_ms": 0,
-        "total_ms": 193
+        "total_ms": 754
       },
       {
         "metadata_ms": 0,
         "puffin_ms": 0,
         "data_ms": 0,
-        "total_ms": 1001
+        "total_ms": 2838
       }
     ],
     "row_group_bloom_filter": [
@@ -127,13 +155,13 @@
         "metadata_ms": 0,
         "puffin_ms": 0,
         "data_ms": 0,
-        "total_ms": 168
+        "total_ms": 545
       },
       {
         "metadata_ms": 0,
         "puffin_ms": 0,
         "data_ms": 0,
-        "total_ms": 309
+        "total_ms": 1104
       }
     ],
     "file_level_bloom_filter": [
@@ -141,13 +169,13 @@
         "metadata_ms": 0,
         "puffin_ms": 0,
         "data_ms": 0,
-        "total_ms": 201
+        "total_ms": 729
       },
       {
         "metadata_ms": 0,
         "puffin_ms": 0,
         "data_ms": 0,
-        "total_ms": 414
+        "total_ms": 1104
       }
     ]
   },

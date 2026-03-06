@@ -58,9 +58,11 @@ import org.apache.iceberg.spark.SparkReadConf;
 import org.apache.iceberg.spark.SparkSchemaUtil;
 import org.apache.iceberg.spark.SparkV2Filters;
 import org.apache.iceberg.spark.source.metrics.BloomFilterSkippedDataFiles;
+import org.apache.iceberg.spark.source.metrics.PlanningPeakMemoryBytes;
 import org.apache.iceberg.spark.source.metrics.PuffinFilesRead;
 import org.apache.iceberg.spark.source.metrics.PuffinReadDuration;
 import org.apache.iceberg.spark.source.metrics.TaskBloomFilterSkippedDataFiles;
+import org.apache.iceberg.spark.source.metrics.TaskPlanningPeakMemoryBytes;
 import org.apache.iceberg.spark.source.metrics.TaskPuffinFilesRead;
 import org.apache.iceberg.spark.source.metrics.TaskPuffinReadDuration;
 import org.apache.iceberg.util.ContentFileUtil;
@@ -361,6 +363,8 @@ class SparkBatchQueryScan extends SparkPartitioningAwareScan<PartitionScanTask>
     CounterResult bloomSkipped = puffinMetrics.bloomFilterSkippedDataFiles();
     all.add(new TaskBloomFilterSkippedDataFiles(bloomSkipped != null ? bloomSkipped.value() : 0L));
 
+    all.add(new TaskPlanningPeakMemoryBytes(planningPeakMemoryBytes));
+
     return all.toArray(new CustomTaskMetric[0]);
   }
 
@@ -371,6 +375,7 @@ class SparkBatchQueryScan extends SparkPartitioningAwareScan<PartitionScanTask>
     all.add(new PuffinFilesRead());
     all.add(new PuffinReadDuration());
     all.add(new BloomFilterSkippedDataFiles());
+    all.add(new PlanningPeakMemoryBytes());
     return all.toArray(new CustomMetric[0]);
   }
 }

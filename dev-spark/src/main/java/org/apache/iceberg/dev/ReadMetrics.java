@@ -17,6 +17,7 @@ public class ReadMetrics {
   public Long numOutputRows;
   // Memory / durations — not provided by Spark scan metrics
   public Float maxMemoryUsage;
+  public Float planningMemoryUsage;
   public Float puffinReadDuration;
   public Float manifestReadDuration;
   public Float datafileReadDuration;

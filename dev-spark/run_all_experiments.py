@@ -79,6 +79,8 @@ def build_results(
     pruning_read = {k: [] for k in bf_key.values()}
     disk_storage_bytes = {k: [] for k in bf_key.values()}
     memory_read_mb = {k: [] for k in bf_key.values()}
+    planning_memory_read_mb = {k: [] for k in bf_key.values()}
+    execution_memory_read_mb = {k: [] for k in bf_key.values()}
     memory_write_mb = {k: [] for k in bf_key.values()}
     time_read_ms = {k: [] for k in bf_key.values()}
     time_write_ms = {k: [] for k in bf_key.values()}
@@ -105,6 +107,10 @@ def build_results(
                 "manifest_overhead_bytes": 0,
             })
             memory_read_mb[key].append(_n(r.get("maxMemoryUsage")))
+            planning_memory_read_mb[key].append(_n(r.get("planningMemoryUsage")))
+            execution_memory_read_mb[key].append(
+                max(0.0, _n(r.get("maxMemoryUsage")) - _n(r.get("planningMemoryUsage")))
+            )
             memory_write_mb[key].append(_n(w.get("maxMemoryUsage")))
             # Read durations: totalReadDuration from ReadTableSpark is in ms; others may be sec
             total_read_ms = r.get("totalReadDuration")
@@ -131,6 +137,8 @@ def build_results(
         "pruning_read": pruning_read,
         "disk_storage_bytes": disk_storage_bytes,
         "memory_read_mb": memory_read_mb,
+        "planning_memory_read_mb": planning_memory_read_mb,
+        "execution_memory_read_mb": execution_memory_read_mb,
         "memory_write_mb": memory_write_mb,
         "time_read_ms": time_read_ms,
         "time_write_ms": time_write_ms,

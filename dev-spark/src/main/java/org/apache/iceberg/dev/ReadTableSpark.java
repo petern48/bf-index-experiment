@@ -168,6 +168,8 @@ public class ReadTableSpark {
     metrics.puffinStatsFileSizeBytes = scanMetrics.get("puffinStatsFileSizeInBytes");
     metrics.puffinStatsFooterSizeBytes = scanMetrics.get("puffinStatsFooterSizeInBytes");
     metrics.maxMemoryUsage = (float) t3.metrics.peakMemoryMB();
+    Long planningBytes = scanMetrics.get("planningPeakMemoryBytes");
+    metrics.planningMemoryUsage = planningBytes != null ? (float) (planningBytes / (1024.0 * 1024.0)) : null;
     metrics.totalReadDuration = (float) t3.metrics.durationMs();
     // manifest/puffin/data read durations: set when real Spark metrics are collected
     metrics.puffinReadDuration = null;
@@ -275,6 +277,7 @@ public class ReadTableSpark {
     printMetric(metrics, "resultDataFiles", "Result data files");
     printMetric(metrics, "skippedDataFiles", "Skipped data files (min/max)");
     printMetric(metrics, "bloomFilterSkippedDataFiles", "Skipped data files (bloom filter)");
+    printMetric(metrics, "planningPeakMemoryBytes", "Planning peak memory (bytes)");
     printMetric(metrics, "totalDataFileSize", "Total data file size (bytes)");
 
     // Row group metrics

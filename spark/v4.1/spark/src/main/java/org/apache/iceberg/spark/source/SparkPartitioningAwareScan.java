@@ -24,6 +24,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -72,6 +74,8 @@ abstract class SparkPartitioningAwareScan<T extends PartitionScanTask> extends S
   private List<ScanTaskGroup<T>> taskGroups = null; // lazy cache of task groups
   private StructType groupingKeyType = null; // lazy cache of the grouping key type
   private Transform[] groupingKeyTransforms = null; // lazy cache of grouping key transforms
+
+  protected volatile long planningPeakMemoryBytes = 0L;
 
   SparkPartitioningAwareScan(
       SparkSession spark,
@@ -192,6 +196,26 @@ abstract class SparkPartitioningAwareScan<T extends PartitionScanTask> extends S
 
   protected synchronized List<T> tasks() {
     if (tasks == null) {
+      Runtime runtime = Runtime.getRuntime();
+      AtomicLong peakMemory = new AtomicLong(0);
+      AtomicBoolean monitoring = new AtomicBoolean(true);
+      Thread monitor =
+          new Thread(
+              () -> {
+                while (monitoring.get()) {
+                  long used = runtime.totalMemory() - runtime.freeMemory();
+                  peakMemory.updateAndGet(curr -> Math.max(curr, used));
+                  try {
+                    Thread.sleep(5);
+                  } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                  }
+                }
+              });
+      monitor.setDaemon(true);
+      monitor.start();
+
       try (CloseableIterable<? extends ScanTask> taskIterable = scan.planFiles()) {
         List<T> plannedTasks = Lists.newArrayList();
 
@@ -208,6 +232,14 @@ abstract class SparkPartitioningAwareScan<T extends PartitionScanTask> extends S
         this.tasks = planFilesFilter(plannedTasks);
       } catch (IOException e) {
         throw new UncheckedIOException("Failed to close scan: " + scan, e);
+      } finally {
+        monitoring.set(false);
+        try {
+          monitor.join(100);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+        this.planningPeakMemoryBytes = peakMemory.get();
       }
     }
 

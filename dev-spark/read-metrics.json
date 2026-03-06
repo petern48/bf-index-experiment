@@ -5,8 +5,9 @@
   "totalDataFileSizeBytes" : 224434171,
   "totalRowGroups" : 0,
   "skippedRowGroups" : 0,
-  "puffinStatsFileSizeBytes" : 53637820,
-  "puffinStatsFooterSizeBytes" : 19674,
-  "maxMemoryUsage" : 612.0763,
-  "totalReadDuration" : 414.11987
+  "puffinStatsFileSizeBytes" : 53637720,
+  "puffinStatsFooterSizeBytes" : 19574,
+  "maxMemoryUsage" : 524.1958,
+  "planningMemoryUsage" : 524.1958,
+  "totalReadDuration" : 1103.5833
 }
