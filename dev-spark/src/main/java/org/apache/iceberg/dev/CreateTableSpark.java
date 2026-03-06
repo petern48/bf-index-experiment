@@ -32,9 +32,6 @@ import org.apache.iceberg.io.CloseableIterable;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.types.DataTypes;
-import org.apache.spark.sql.types.StructField;
-import org.apache.spark.sql.types.StructType;
 import static org.apache.spark.sql.functions.*;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.actions.ComputeTableStats;
@@ -158,72 +155,31 @@ public class CreateTableSpark {
     System.out.println("Bloom mode: " + bloomMode);
     System.out.println("Configuration: " + numDataFiles + " files x " + recordsPerFile + " rows/file");
 
-    // Configuration for dataset with INTERLEAVED IDs (overlapping ranges)
-    // This ensures min/max stats CANNOT prune files, but bloom filters CAN
+    // Sequential ID per file + uncorrelated data (fair benchmark for bloom filters).
+    // - Sequential IDs: file k has ids [k*R, (k+1)*R), so min/max can prune on id.
+    // - Uncorrelated data: data = "item_" + (id * 7919 % 10000000), so string values are spread
+    //   across files and min/max on data rarely help; bloom filters are the main win for string filters.
     long totalRecords = (long) numDataFiles * recordsPerFile;
+    final long dataHashMod = 10_000_000L;
+    final int dataHashMultiplier = 7919;
 
     System.out.println("Generating " + totalRecords + " records across " + numDataFiles + " files...");
     System.out.println("Estimated total data size: ~" + (totalRecords * 25 / 1_000_000) + " MB (before compression)");
-    System.out.println("Using INTERLEAVED IDs so min/max stats cannot prune (bloom filters needed):");
-    System.out.println("  File 0: IDs 0, " + numDataFiles + ", " + (2*numDataFiles) + ", ... (every " + numDataFiles + "th starting at 0)");
-    System.out.println("  File 1: IDs 1, " + (numDataFiles+1) + ", " + (2*numDataFiles+1) + ", ... (every " + numDataFiles + "th starting at 1)");
-    System.out.println("  ... etc.");
-    System.out.println("  All files have overlapping ranges: min~=0, max~=" + (totalRecords - 1));
-
-    // StructType schema =
-    //     DataTypes.createStructType(
-    //         new StructField[] {
-    //           DataTypes.createStructField("id", DataTypes.LongType, false),
-    //           DataTypes.createStructField("data", DataTypes.StringType, false),
-    //           DataTypes.createStructField("created_at", DataTypes.TimestampType, true)
-    //         });
-
-    // Write each file with INTERLEAVED IDs
-    // File 0: IDs 0, 10, 20, 30, ...  (i * numDataFiles + 0)
-    // File 1: IDs 1, 11, 21, 31, ...  (i * numDataFiles + 1)
-    // File N: IDs N, N+10, N+20, ...  (i * numDataFiles + N)
-    // Each file has min=fileNum, max=(recordsPerFile-1)*numDataFiles+fileNum
-    // All files have overlapping ranges, so min/max pruning won't work
-    // But each specific ID exists in exactly ONE file, so bloom filters can prune
-
-    // for (int fileNum = 0; fileNum < numDataFiles; fileNum++) {
-    //   List<Row> rows = new ArrayList<>(recordsPerFile);
-    //   for (int i = 0; i < recordsPerFile; i++) {
-    //     long id = (long) i * numDataFiles + fileNum;
-    //     rows.add(
-    //         org.apache.spark.sql.RowFactory.create(
-    //             id,
-    //             "item_" + id,
-    //             java.sql.Timestamp.from(
-    //                 java.time.OffsetDateTime.parse("2024-01-15T10:00:00Z")
-    //                     .plusSeconds(id)
-    //                     .toInstant())));
-    //   }
-
-    //   Dataset<Row> df = spark.createDataFrame(rows, schema);
-    //   df.coalesce(1).writeTo(tableName).append();
-
-    //   long minId = fileNum;
-    //   long maxId = (long) (recordsPerFile - 1) * numDataFiles + fileNum;
-    //   System.out.println(
-    //       "  File " + (fileNum + 1) + "/" + numDataFiles
-    //           + ": IDs " + minId + ", " + (minId + numDataFiles) + ", " + (minId + 2L * numDataFiles)
-    //           + ", ... (min=" + minId + ", max=" + maxId + ")");
-    // }
-
+    System.out.println("Sequential ID per file + uncorrelated data (fair benchmark):");
+    System.out.println("  File 0: IDs [0, " + recordsPerFile + "), file 1: [" + recordsPerFile + ", " + (2 * recordsPerFile) + "), ...");
+    System.out.println("  data = 'item_' + (id * " + dataHashMultiplier + " % " + dataHashMod + ") -> min/max on data rarely prune");
 
     Dataset<Row> df =
         spark.range(totalRecords)
-            .withColumn("fileNum", expr("id % " + numDataFiles))
-            .withColumn("i", expr("id / " + numDataFiles))
-            .withColumn("id", expr("i * " + numDataFiles + " + fileNum"))
-            .drop("i")
-            .withColumn("data", concat(lit("item_"), col("id")))
+            .withColumn(
+                "data",
+                concat(
+                    lit("item_"),
+                    expr("cast((id * " + dataHashMultiplier + " % " + dataHashMod + ") as string)")))
             .withColumn(
                 "created_at",
-                expr("timestampadd(SECOND, id, timestamp('2024-01-15T10:00:00Z'))")
-            )
-            .repartition(numDataFiles, col("fileNum"))
+                expr("timestampadd(SECOND, id, timestamp('2024-01-15T10:00:00Z'))"))
+            .repartition(numDataFiles, expr("id / " + recordsPerFile))
             .sortWithinPartitions("id");
 
 
@@ -232,7 +188,7 @@ public class CreateTableSpark {
         MemoryTracker.track(
             () -> {
               try {
-                df.drop("fileNum").writeTo(tableName).append();
+                df.writeTo(tableName).append();
               } catch (Exception e) {
                 throw new RuntimeException(e);
               }
@@ -242,8 +198,7 @@ public class CreateTableSpark {
     System.out.println("Data file write: " + datafileResult);
 
     System.out.println(
-        "Wrote " + totalRecords + " records in " + numDataFiles + " data files");
-    System.out.println("NOTE: All files have overlapping ID ranges -> min/max pruning ineffective");
+        "Wrote " + totalRecords + " records in " + numDataFiles + " data files (sequential ID per file)");
 
     Table table = Spark3Util.loadIcebergTable(spark, tableName);
     table.refresh();

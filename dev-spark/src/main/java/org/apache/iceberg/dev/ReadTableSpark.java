@@ -55,6 +55,18 @@ public class ReadTableSpark {
 
   private static final String DEFAULT_TABLE = "local.default.sample_table_spark";
 
+  /** Must match CreateTableSpark: data = "item_" + (id * 7919 % 10_000_000). */
+  private static final long DATA_HASH_MOD = 10_000_000L;
+  private static final int DATA_HASH_MULTIPLIER = 7919;
+
+  private static String dataValueForId(long id) {
+    long h = (id * DATA_HASH_MULTIPLIER) % DATA_HASH_MOD;
+    if (h < 0) {
+      h += DATA_HASH_MOD;
+    }
+    return "item_" + h;
+  }
+
   /** Result of a query run with memory/duration tracking; includes the Dataset for scan metrics. */
   private static class TrackedQueryResult {
     final MemoryTracker.Result metrics;
@@ -88,75 +100,72 @@ public class ReadTableSpark {
 
     spark.sparkContext().setLogLevel("ERROR");
 
-    // Get table metadata to determine file count
+    // Get table metadata: file count and total records (sequential ID per file)
     org.apache.iceberg.Table table = org.apache.iceberg.spark.Spark3Util.loadIcebergTable(spark, tableName);
-    String totalFilesStr = table.currentSnapshot().summary().get("total-data-files");
+    Map<String, String> summary = table.currentSnapshot().summary();
+    String totalFilesStr = summary.get("total-data-files");
     int numFiles = totalFilesStr != null ? Integer.parseInt(totalFilesStr) : 10;
+    String totalRecordsStr = summary.get("total-records");
+    long totalRecords = totalRecordsStr != null ? Long.parseLong(totalRecordsStr) : (long) numFiles * 100_000;
+    long recordsPerFile = numFiles > 0 ? totalRecords / numFiles : 100_000;
+
+    // Probe values: mid id, three ids in different files, and their data strings (same formula as CreateTableSpark)
+    long midId = totalRecords / 2;
+    long id1 = recordsPerFile / 2;
+    long id2 = recordsPerFile + recordsPerFile / 2;
+    long id3 = 2 * recordsPerFile + recordsPerFile / 2;
+    String dataMid = dataValueForId(midId);
+    String data1 = dataValueForId(id1);
+    String data2 = dataValueForId(id2);
+    String data3 = dataValueForId(id3);
 
     System.out.println("Reading table: " + tableName);
     System.out.println();
-    System.out.println("Data layout: " + numFiles + " files with INTERLEAVED IDs");
-    System.out.println("  File 0: IDs 0, " + numFiles + ", " + (2*numFiles) + ", ... (every " + numFiles + "th starting at 0)");
-    System.out.println("  File 1: IDs 1, " + (numFiles+1) + ", " + (2*numFiles+1) + ", ... (every " + numFiles + "th starting at 1)");
-    System.out.println("  ... etc.");
-    System.out.println("  All files have overlapping min/max ranges -> min/max CANNOT prune!");
-    System.out.println("  Each ID exists in exactly ONE file -> bloom filters CAN prune!");
-    System.out.println();
-    System.out.println("ID mapping: id % " + numFiles + " = file number");
-    System.out.println("  id=50 -> file " + (50 % numFiles) + ", id=51 -> file " + (51 % numFiles) + ", id=55 -> file " + (55 % numFiles) + ", etc.");
+    System.out.println("Data layout: " + numFiles + " files, sequential ID per file, uncorrelated data");
+    System.out.println("  File 0: IDs [0, " + recordsPerFile + "), file 1: [" + recordsPerFile + ", " + (2 * recordsPerFile) + "), ...");
+    System.out.println("  data = 'item_' + (id * " + DATA_HASH_MULTIPLIER + " % " + DATA_HASH_MOD + ") -> string filters need bloom to prune");
     System.out.println();
 
-    // Query 1: id = 50 — exists in one file only (50 % numFiles)
-    // With bloom filter: skip (numFiles-1) files. Without bloom filter: skip 0 files (min/max useless)
-    int file50 = 50 % numFiles;
+    // 1. Int equality: id = mid (one row, one file; min/max and bloom both prune)
     TrackedQueryResult t1 =
         runQueryWithMemoryTracking(
-            spark,
-            tableName,
-            "id = 50",
-            "id=50 is in file " + file50 + ". Bloom: skip " + (numFiles - 1) + ". No bloom: skip 0");
+            spark, tableName, "id = " + midId,
+            "Int eq: id=" + midId + " in one file; min/max and bloom can prune");
 
-    // Query 2: id = 9999999 — doesn't exist in any file
-    // With bloom filter: skip all files. Without bloom: skip 0 (min/max sees all files match)
+    // 2. Int IN: values in different files
     TrackedQueryResult t2 =
         runQueryWithMemoryTracking(
-            spark,
-            tableName,
-            "id = 9999999",
-            "id=9999999 doesn't exist. Bloom: skip " + numFiles + ". No bloom: skip 0");
+            spark, tableName, "id IN (" + id1 + ", " + id2 + ", " + id3 + ")",
+            "Int IN: ids in 3 files; min/max and bloom can prune");
 
-    // Query 3: id IN (50, 51, 55) — values in different files
-    int file51 = 51 % numFiles;
-    int file55 = 55 % numFiles;
-    java.util.Set<Integer> inFiles = new java.util.TreeSet<>();
-    inFiles.add(file50);
-    inFiles.add(file51);
-    inFiles.add(file55);
-    int skipIn = numFiles - inFiles.size();
+    // 3. String equality: data = 'item_...' (min/max rarely help; bloom is main win — used for metrics export)
     TrackedQueryResult t3 =
         runQueryWithMemoryTracking(
-            spark,
-            tableName,
-            "id IN (50, 51, 55)",
-            "ids in files " + inFiles + ". Bloom: skip " + skipIn + ". No bloom: skip 0");
+            spark, tableName, "data = '" + dataMid.replace("'", "''") + "'",
+            "String eq: data='" + dataMid + "'; bloom prunes, min/max rarely");
 
-    // Query 4: id = 123456 — exists in one file
-    int file123456 = 123456 % numFiles;
+    // 4. String IN
     TrackedQueryResult t4 =
         runQueryWithMemoryTracking(
-            spark,
-            tableName,
-            "id = 123456",
-            "id=123456 is in file " + file123456 + ". Bloom: skip " + (numFiles - 1) + ". No bloom: skip 0");
+            spark, tableName,
+            "data IN ('" + data1.replace("'", "''") + "', '" + data2.replace("'", "''") + "', '" + data3.replace("'", "''") + "')",
+            "String IN: 3 values; bloom prunes");
 
-    // Print memory summary
+    // 5. No match: id = -1 (bloom skips all files; no bloom reads all)
+    TrackedQueryResult t5 =
+        runQueryWithMemoryTracking(
+            spark, tableName, "id = -1",
+            "No match: id=-1; bloom skips all " + numFiles + " files, no bloom reads all");
+
     System.out.println("=== Memory Summary ===");
-    System.out.println("  Query 1 (id = 50000): " + t1.metrics);
-    System.out.println("  Query 2 (id = 9999999): " + t2.metrics);
-    System.out.println("  Query 3 (id IN (50000, 550000)): " + t3.metrics);
-    System.out.println("  Query 4 (id BETWEEN 150000 AND 150100): " + t4.metrics);
+    System.out.println("  1 id=" + midId + ": " + t1.metrics);
+    System.out.println("  2 id IN (" + id1 + "," + id2 + "," + id3 + "): " + t2.metrics);
+    System.out.println("  3 data='" + dataMid + "': " + t3.metrics);
+    System.out.println("  4 data IN (3 values): " + t4.metrics);
+    System.out.println("  5 id=-1: " + t5.metrics);
     System.out.println();
 
+    // Export metrics from representative query: string equality (best for showing bloom impact)
     Map<String, Long> scanMetrics = getScanMetrics(t3.dataFrame);
     ReadMetrics metrics = new ReadMetrics();
     metrics.allSkippedRowGroups = getIntMetric(scanMetrics, "skippedRowGroups");
