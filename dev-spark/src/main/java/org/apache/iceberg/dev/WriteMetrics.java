@@ -7,7 +7,9 @@ public class WriteMetrics {
   // Counts
   public Integer totalRowGroups;
   public Integer totalDataFiles;
-  // Puffin stats file (from ComputeTableStats result)
+  // Disk sizes per file type
+  public Long dataFileDiskSizeInBytes;
+  public Long manifestDiskSizeInBytes;
   public Long puffinDiskSizeInBytes;
   public Long puffinFooterSizeInBytes;
   // Peak memory (MB) per write phase — no extra work, just wraps existing operations
