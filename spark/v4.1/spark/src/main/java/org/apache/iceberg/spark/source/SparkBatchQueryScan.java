@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.iceberg.DeleteFile;
@@ -60,9 +61,11 @@ import org.apache.iceberg.spark.SparkV2Filters;
 import org.apache.iceberg.spark.source.metrics.BloomFilterSkippedDataFiles;
 import org.apache.iceberg.spark.source.metrics.PuffinFilesRead;
 import org.apache.iceberg.spark.source.metrics.PuffinReadDuration;
+import org.apache.iceberg.spark.source.metrics.PuffinReadMaxMemory;
 import org.apache.iceberg.spark.source.metrics.TaskBloomFilterSkippedDataFiles;
 import org.apache.iceberg.spark.source.metrics.TaskPuffinFilesRead;
 import org.apache.iceberg.spark.source.metrics.TaskPuffinReadDuration;
+import org.apache.iceberg.spark.source.metrics.TaskPuffinReadMaxMemory;
 import org.apache.iceberg.util.ContentFileUtil;
 import org.apache.iceberg.util.DeleteFileSet;
 import org.apache.iceberg.util.SnapshotUtil;
@@ -88,6 +91,7 @@ class SparkBatchQueryScan extends SparkPartitioningAwareScan<PartitionScanTask>
   private final String tag;
   private final List<Expression> runtimeFilterExpressions;
   private final ScanMetrics puffinScanMetrics = ScanMetrics.of(new DefaultMetricsContext());
+  private final AtomicReference<Double> puffinReadMaxMemoryMB = new AtomicReference<>();
 
   SparkBatchQueryScan(
       SparkSession spark,
@@ -188,8 +192,13 @@ class SparkBatchQueryScan extends SparkPartitioningAwareScan<PartitionScanTask>
     }
 
     FileBloomFilterEvaluator evaluator =
-        FileBloomFilterEvaluator.create(table(), snapshot, filter, caseSensitive(),
-            puffinScanMetrics);
+        FileBloomFilterEvaluator.create(
+            table(),
+            snapshot,
+            filter,
+            caseSensitive(),
+            puffinScanMetrics,
+            puffinReadMaxMemoryMB::set);
     if (evaluator == null) {
       return plannedTasks;
     }
@@ -358,6 +367,11 @@ class SparkBatchQueryScan extends SparkPartitioningAwareScan<PartitionScanTask>
     all.add(new TaskPuffinReadDuration(
         readDuration != null ? readDuration.totalDuration().toMillis() : -1L));
 
+    Double puffinMB = puffinReadMaxMemoryMB.get();
+    all.add(
+        new TaskPuffinReadMaxMemory(
+            puffinMB != null ? (long) (puffinMB * 1024) : 0L));
+
     CounterResult bloomSkipped = puffinMetrics.bloomFilterSkippedDataFiles();
     all.add(new TaskBloomFilterSkippedDataFiles(bloomSkipped != null ? bloomSkipped.value() : 0L));
 
@@ -370,6 +384,7 @@ class SparkBatchQueryScan extends SparkPartitioningAwareScan<PartitionScanTask>
     List<CustomMetric> all = Lists.newArrayList(base);
     all.add(new PuffinFilesRead());
     all.add(new PuffinReadDuration());
+    all.add(new PuffinReadMaxMemory());
     all.add(new BloomFilterSkippedDataFiles());
     return all.toArray(new CustomMetric[0]);
   }

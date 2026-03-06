@@ -19,10 +19,14 @@
 package org.apache.iceberg.spark;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.DoubleConsumer;
 import java.util.stream.Collectors;
 import org.apache.datasketches.filters.bloomfilter.BloomFilter;
 import org.apache.datasketches.memory.Memory;
@@ -75,6 +79,8 @@ public class FileBloomFilterEvaluator {
     this.bloomFiltersByFilePath = bloomFiltersByFilePath;
   }
 
+  private static final int MEMORY_POLL_INTERVAL_MS = 5;
+
   /**
    * Creates an evaluator for the given table, snapshot, and filter expression. Returns {@code
    * null} if no applicable file-level bloom filter blobs exist in the statistics file (caller
@@ -83,6 +89,23 @@ public class FileBloomFilterEvaluator {
   public static FileBloomFilterEvaluator create(
       Table table, Snapshot snapshot, Expression filter, boolean caseSensitive,
       ScanMetrics scanMetrics) {
+    return create(table, snapshot, filter, caseSensitive, scanMetrics, null);
+  }
+
+  /**
+   * Creates an evaluator for the given table, snapshot, and filter expression. Returns {@code
+   * null} if no applicable file-level bloom filter blobs exist in the statistics file (caller
+   * should treat as "might contain" for all files).
+   *
+   * @param memoryRecorder if non-null, records peak heap memory (MB) during puffin file read
+   */
+  public static FileBloomFilterEvaluator create(
+      Table table,
+      Snapshot snapshot,
+      Expression filter,
+      boolean caseSensitive,
+      ScanMetrics scanMetrics,
+      DoubleConsumer memoryRecorder) {
     // Find the statistics file for this snapshot
     StatisticsFile statsFile = null;
     for (StatisticsFile sf : table.statisticsFiles()) {
@@ -117,39 +140,56 @@ public class FileBloomFilterEvaluator {
     Map<String, Map<Integer, BloomFilter>> bloomFiltersByFilePath = Maps.newHashMap();
     scanMetrics.puffinFilesRead().increment();
     Timer.Timed puffinTimer = scanMetrics.puffinReadDuration().start();
-    try (PuffinReader reader =
-        Puffin.read(table.io().newInputFile(statsFile.path()))
-            .withFileSize(statsFile.fileSizeInBytes())
-            .withFooterSize(statsFile.fileFooterSizeInBytes())
-            .build()) {
 
-      List<BlobMetadata> bloomBlobs =
-          reader.fileMetadata().blobs().stream()
-              .filter(
-                  b ->
-                      StandardBlobTypes.APACHE_DATASKETCHES_BLOOM_FILTER_V1.equals(b.type())
-                          && b.properties().containsKey(DATA_FILE_PATH_PROPERTY)
-                          && !b.inputFields().isEmpty()
-                          && referencedFieldIds.contains(b.inputFields().get(0)))
-              .collect(Collectors.toList());
+    final StatisticsFile statsFileForRead = statsFile;
+    Runnable puffinRead =
+        () -> {
+          try (PuffinReader reader =
+              Puffin.read(table.io().newInputFile(statsFileForRead.path()))
+                  .withFileSize(statsFileForRead.fileSizeInBytes())
+                  .withFooterSize(statsFileForRead.fileFooterSizeInBytes())
+                  .build()) {
 
-      if (bloomBlobs.isEmpty()) {
-        return null;
+            List<BlobMetadata> bloomBlobs =
+                reader.fileMetadata().blobs().stream()
+                    .filter(
+                        b ->
+                            StandardBlobTypes.APACHE_DATASKETCHES_BLOOM_FILTER_V1.equals(b.type())
+                                && b.properties().containsKey(DATA_FILE_PATH_PROPERTY)
+                                && !b.inputFields().isEmpty()
+                                && referencedFieldIds.contains(b.inputFields().get(0)))
+                    .collect(Collectors.toList());
+
+            if (bloomBlobs.isEmpty()) {
+              return;
+            }
+
+            for (Pair<BlobMetadata, ByteBuffer> pair : reader.readAll(bloomBlobs)) {
+              BlobMetadata blobMeta = pair.first();
+              String filePath = blobMeta.properties().get(DATA_FILE_PATH_PROPERTY);
+              int fieldId = blobMeta.inputFields().get(0);
+              byte[] bytes = toByteArray(pair.second());
+              bloomFiltersByFilePath
+                  .computeIfAbsent(filePath, k -> Maps.newHashMap())
+                  .put(fieldId, BloomFilter.heapify(Memory.wrap(bytes)));
+            }
+          } catch (IOException e) {
+            throw new UncheckedIOException(e);
+          }
+        };
+
+    try {
+      if (memoryRecorder != null) {
+        double peakMB = trackPeakMemoryMB(puffinRead);
+        memoryRecorder.accept(peakMB);
+      } else {
+        puffinRead.run();
       }
-
-      for (Pair<BlobMetadata, ByteBuffer> pair : reader.readAll(bloomBlobs)) {
-        BlobMetadata blobMeta = pair.first();
-        String filePath = blobMeta.properties().get(DATA_FILE_PATH_PROPERTY);
-        int fieldId = blobMeta.inputFields().get(0);
-        byte[] bytes = toByteArray(pair.second());
-        bloomFiltersByFilePath
-            .computeIfAbsent(filePath, k -> Maps.newHashMap())
-            .put(fieldId, BloomFilter.heapify(Memory.wrap(bytes)));
-      }
-
-    } catch (IOException e) {
+    } catch (UncheckedIOException e) {
       LOG.warn(
-          "Failed to read bloom filter statistics from {}: {}", statsFile.path(), e.getMessage());
+          "Failed to read bloom filter statistics from {}: {}",
+          statsFileForRead.path(),
+          e.getCause().getMessage());
       return null;
     } finally {
       puffinTimer.stop();
@@ -317,5 +357,42 @@ public class FileBloomFilterEvaluator {
       buf.duplicate().get(bytes);
       return bytes;
     }
+  }
+
+  /** Tracks peak heap memory (MB) while running the operation. */
+  private static double trackPeakMemoryMB(Runnable operation) {
+    Runtime runtime = Runtime.getRuntime();
+    AtomicLong peakBytes = new AtomicLong(0);
+    AtomicBoolean running = new AtomicBoolean(true);
+
+    Thread monitor =
+        new Thread(
+            () -> {
+              while (running.get()) {
+                long used = runtime.totalMemory() - runtime.freeMemory();
+                peakBytes.updateAndGet(current -> Math.max(current, used));
+                try {
+                  Thread.sleep(MEMORY_POLL_INTERVAL_MS);
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                  break;
+                }
+              }
+            });
+    monitor.setDaemon(true);
+    monitor.start();
+
+    try {
+      operation.run();
+    } finally {
+      running.set(false);
+      try {
+        monitor.join(100);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
+
+    return peakBytes.get() / (1024.0 * 1024.0);
   }
 }

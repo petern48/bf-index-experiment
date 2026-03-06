@@ -17,8 +17,4 @@ public class WriteMetrics {
   // Duration (ms) per write phase
   public Float writeDataDuration;
   public Float writePuffinDuration;
-  public Float puffinWriteDuration;
-  public Float manifestWriteDuration;
-  public Float datafileWriteDuration;
-  public Float totalWriteDuration;
 }

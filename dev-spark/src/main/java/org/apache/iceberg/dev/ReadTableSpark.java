@@ -169,6 +169,10 @@ public class ReadTableSpark {
     metrics.puffinStatsFooterSizeBytes = scanMetrics.get("puffinStatsFooterSizeInBytes");
     metrics.maxMemoryUsage = (float) t3.metrics.peakMemoryMB();
     metrics.totalReadDuration = (float) t3.metrics.durationMs();
+    // puffinReadMaxMemory: MB (stored as MB*1024 in Spark metric)
+    Long puffinMaxMem = scanMetrics.get("puffinReadMaxMemory");
+    metrics.readPuffinMaxMemory =
+        puffinMaxMem != null && puffinMaxMem > 0 ? puffinMaxMem / 1024.0f : null;
     // manifest/puffin/data read durations: set when real Spark metrics are collected
     metrics.puffinReadDuration = null;
     metrics.manifestReadDuration = null;

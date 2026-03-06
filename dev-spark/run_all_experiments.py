@@ -104,7 +104,10 @@ def build_results(
                 "puffin_bytes": _int(w.get("puffinDiskSizeInBytes")),
                 "manifest_overhead_bytes": 0,
             })
-            memory_read_mb[key].append(_n(r.get("maxMemoryUsage")))
+            memory_read_mb[key].append({
+                "max_mb": _n(r.get("maxMemoryUsage")),
+                "puffin_mb": _n(r.get("readPuffinMaxMemory")),
+            })
             memory_write_mb[key].append({
                 "data_mb": _n(w.get("writeDataMaxMemory")),
                 "puffin_mb": _n(w.get("writePuffinMaxMemory")),

@@ -194,10 +194,11 @@ def plot_disk_storage(data: dict, out_dir: str, display_inline: bool = False, ax
 
 
 # ---------------------------------------------------------------------------
-# Chart 3: Memory Usage (Read)
+# Chart 3: Memory Usage (Read) – Read Memory Breakdown
 # ---------------------------------------------------------------------------
 def plot_memory_read(data: dict, out_dir: str, display_inline: bool = False, ax=None):
-    """Peak memory per bloom filter type."""
+    """Stacked bar: puffin read (subset) + rest of query. Total height = maxMemoryUsage.
+    Bottom = readPuffinMaxMemory, top = maxMemoryUsage - readPuffinMaxMemory."""
     sizes = data["dataset_sizes"]
     offsets, ticks, _ = group_positions(len(sizes), 3)
     bar_width = 0.22
@@ -205,12 +206,30 @@ def plot_memory_read(data: dict, out_dir: str, display_inline: bool = False, ax=
     own_fig = ax is None
     if own_fig:
         fig, ax = plt.subplots(figsize=(10, 5))
+    legend_handles = []
 
     for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
-        values = np.array(data["memory_read_mb"][key], dtype=float)
-        ax.bar(offsets[i], values, bar_width, color=color)
+        rows = data["memory_read_mb"][key]
+        # Support both dict (max_mb, puffin_mb) and legacy float (total only)
+        def _get(v, k):
+            return v.get(k, 0) if isinstance(v, dict) else (v if k == "max_mb" else 0)
+        max_mb = np.array([_get(r, "max_mb") for r in rows], dtype=float)
+        puffin_mb = np.array([_get(r, "puffin_mb") for r in rows], dtype=float)
+        # Puffin is a subset of max; rest = max - puffin (clamp to avoid negatives)
+        rest_mb = np.maximum(0, max_mb - puffin_mb)
 
-    ax.legend(handles=bf_color_legend_handles(), title="Bloom Filter Type")
+        ax.bar(offsets[i], puffin_mb, bar_width, color=color)
+        ax.bar(offsets[i], rest_mb, bar_width, bottom=puffin_mb,
+               color=color, alpha=STACK_ALPHA_LIGHT)
+        legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
+
+    puffin_patch = mpatches.Patch(facecolor="dimgray",                       label="Puffin")
+    rest_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Total")
+
+    color_legend = ax.legend(handles=legend_handles,         loc="upper left",   title="Bloom Filter Type")
+    ax.add_artist(color_legend)
+    ax.legend(         handles=[puffin_patch, rest_patch], loc="upper center", title="Bar Segments")
+
     ax.set_xticks(ticks)
     ax.set_xticklabels(sizes)
     ax.set_xlabel("Dataset Size")
