@@ -102,6 +102,7 @@ def build_results(
             #         raise Exception(f"Note: totalRowGroups differs (write={write_rg}, read={read_rg});")
             pruning_read[key].append({
                 "total_row_groups": _int(total_row_groups),
+                "row_groups_read": _int(r.get("rowGroupsRead")),
                 "skipped_row_groups": _int(r.get("allSkippedRowGroups")),
                 "row_groups_skipped_by_file_bloom_filter": _int(
                     r.get("rowGroupsSkippedByFileBloomFilter")

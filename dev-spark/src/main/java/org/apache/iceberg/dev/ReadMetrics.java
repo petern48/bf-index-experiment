@@ -10,6 +10,7 @@ public class ReadMetrics {
   public Integer manifestSkippedDataFiles;
   public Integer bloomFilterSkippedDataFiles;
   public Integer rowGroupsSkippedByFileBloomFilter;
+  public Integer rowGroupsRead;
   public Long totalDataFileSizeBytes;
   public Integer totalRowGroups;
   public Integer allSkippedRowGroups;

@@ -26,8 +26,9 @@ BF_LABELS = {
 BF_KEYS   = list(BF_LABELS.keys())
 BF_COLORS = [COLORS["no_bf"], COLORS["rg_bf"], COLORS["file_bf"]]
 
-STACK_ALPHA_LIGHT = 0.45  # lightest shade for the portion of stacked bars
-STACK_ALPHA_MEDIUM = 0.65  # medium shade for the portion of stacked bars (only used if there's 3 stacked bars)
+STACK_ALPHA_LIGHT = 0.35  # lightest shade for the portion of stacked bars
+STACK_ALPHA_MEDIUM = 0.55  # medium shade
+STACK_ALPHA_DARK = 0.75  # darker shade for 4-segment stacks
 
 STACK_COLORS = {
     "metadata": "#8da0cb",  # periwinkle
@@ -70,8 +71,8 @@ def bf_color_legend_handles():
 # Chart 1: Pruning (Read)
 # ---------------------------------------------------------------------------
 def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool = False, ax=None):
-    """Stacked bar: height = total row groups. Bottom = read (darker), middle = skipped (row-group BF),
-    top = skipped (file-level BF)."""
+    """Stacked bar: height = total row groups (from write). Segments (bottom to top):
+    Read (instrumented), Row-group BF skips, File-level BF skips, Other (= total - read - rg_bf - file_bf)."""
     sizes = data["dataset_sizes"]
     offsets, ticks, _ = group_positions(len(sizes), 3)
     bar_width = 0.22
@@ -84,6 +85,11 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
     for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
         rows = data["pruning_read"][key]
         totals = np.array([r["total_row_groups"] for r in rows], dtype=float)
+        read_row_groups = np.array([r.get("row_groups_read") for r in rows], dtype=float)
+        # read_row_groups = totals - skipped_rg - file_bf_skipped_rg
+        # assert all(totals >= skipped_rg + file_bf_skipped_rg), (
+        #     f"Note: total row groups < row_group_bf_skipped + file_bf_skipped for {key}"
+        # )
         skipped_rg = np.array(
             [r.get("skipped_row_groups", r.get("all_skipped_row_groups", 0)) for r in rows],
             dtype=float,
@@ -92,25 +98,27 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
             [r.get("row_groups_skipped_by_file_bloom_filter", 0) for r in rows],
             dtype=float,
         )
-        read_row_groups = totals - skipped_rg - file_bf_skipped_rg
-        assert all(totals >= skipped_rg + file_bf_skipped_rg), (
-            f"Note: total row groups < row_group_bf_skipped + file_bf_skipped for {key}"
-        )
+        other_rg = totals - read_row_groups - skipped_rg - file_bf_skipped_rg
+        assert all(other_rg >= 0), f"Note: other row groups < 0 for {key}"
 
         ax.bar(offsets[i], read_row_groups, bar_width, color=color)
         ax.bar(offsets[i], skipped_rg, bar_width, bottom=read_row_groups,
-               color=color, alpha=STACK_ALPHA_MEDIUM)
+               color=color, alpha=STACK_ALPHA_DARK)
         ax.bar(offsets[i], file_bf_skipped_rg, bar_width, bottom=read_row_groups + skipped_rg,
+               color=color, alpha=STACK_ALPHA_MEDIUM)
+        ax.bar(offsets[i], other_rg, bar_width, bottom=read_row_groups + skipped_rg + file_bf_skipped_rg,
                color=color, alpha=STACK_ALPHA_LIGHT)
         legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
 
     read_patch = mpatches.Patch(facecolor="dimgray", label="Read")
-    skip_rg_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_MEDIUM, label="Skipped (row-group BF)")
-    skip_bf_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Skipped (file-level BF)")
+    skip_rg_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_DARK, label="Skipped (row-group BF)")
+    skip_bf_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_MEDIUM, label="Skipped (file-level BF)")
+    other_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Other (e.g. manifest)")
 
-    color_legend = ax.legend(handles=legend_handles,         loc="upper left",   title="Bloom Filter Type")
+    color_legend = ax.legend(handles=legend_handles, loc="upper left", title="Bloom Filter Type")
     ax.add_artist(color_legend)
-    ax.legend(handles=[read_patch, skip_rg_patch, skip_bf_patch], loc="upper center", title="Bar Segments")
+    ax.legend(handles=[read_patch, skip_rg_patch, skip_bf_patch, other_patch],
+              loc="upper center", title="Bar Segments")
 
     ax.set_xticks(ticks)
     ax.set_xticklabels(sizes)

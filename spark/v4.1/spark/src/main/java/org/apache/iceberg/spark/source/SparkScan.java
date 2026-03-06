@@ -47,6 +47,7 @@ import org.apache.iceberg.spark.source.metrics.NumDeletes;
 import org.apache.iceberg.spark.source.metrics.NumSplits;
 import org.apache.iceberg.spark.source.metrics.PositionalDeleteFiles;
 import org.apache.iceberg.spark.source.metrics.ResultDataFiles;
+import org.apache.iceberg.spark.source.metrics.RowGroupsRead;
 import org.apache.iceberg.spark.source.metrics.ResultDeleteFiles;
 import org.apache.iceberg.spark.source.metrics.ScannedDataManifests;
 import org.apache.iceberg.spark.source.metrics.ScannedDeleteManifests;
@@ -355,6 +356,7 @@ abstract class SparkScan implements Scan, SupportsReportStatistics {
       // row groups
       new TotalRowGroups(),
       new SkippedRowGroups(),
+      new RowGroupsRead(),
 
       // Puffin statistics file
       new PuffinStatsFileSizeInBytes(),

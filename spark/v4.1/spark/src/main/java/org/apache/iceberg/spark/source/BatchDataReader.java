@@ -32,6 +32,7 @@ import org.apache.iceberg.spark.OrcBatchReadConf;
 import org.apache.iceberg.spark.ParquetBatchReadConf;
 import org.apache.iceberg.spark.source.metrics.TaskNumDeletes;
 import org.apache.iceberg.spark.source.metrics.TaskNumSplits;
+import org.apache.iceberg.spark.source.metrics.TaskRowGroupsRead;
 import org.apache.iceberg.spark.source.metrics.TaskSkippedRowGroups;
 import org.apache.iceberg.spark.source.metrics.TaskTotalRowGroups;
 import org.apache.spark.rdd.InputFileBlockHolder;
@@ -85,11 +86,14 @@ class BatchDataReader extends BaseBatchReader<FileScanTask>
 
   @Override
   public CustomTaskMetric[] currentMetricsValues() {
+    long total = totalRowGroups();
+    long skipped = skippedRowGroups();
     return new CustomTaskMetric[] {
       new TaskNumSplits(numSplits),
       new TaskNumDeletes(counter().get()),
-      TaskTotalRowGroups.of(totalRowGroups()),
-      TaskSkippedRowGroups.of(skippedRowGroups())
+      TaskTotalRowGroups.of(total),
+      TaskSkippedRowGroups.of(skipped),
+      TaskRowGroupsRead.of(Math.max(0L, total - skipped))
     };
   }
 
