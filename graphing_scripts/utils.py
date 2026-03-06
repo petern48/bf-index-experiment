@@ -302,31 +302,39 @@ def plot_memory_read(data: dict, out_dir: str, display_inline: bool = False, ax=
 # Chart 4: Memory Usage (Write) - Write Memory Breakdown
 # ---------------------------------------------------------------------------
 def plot_memory_write(data: dict, out_dir: str, display_inline: bool = False, ax=None, dataset_size: str = None):
-    """Stacked bar: data write + puffin write memory. All bars use same segment colors; x-axis = bloom filter type."""
-    x_pos, ticks, tick_labels, bar_width = bar_positions_3_by_bf()
-    c = SEGMENT_COLORS_2
+    """Clustered bar chart: Data and Puffin as separate bars per bloom filter type.
+    One color for Data, one color for Puffin."""
+    COLOR_DATA = "#1565c0"   # blue
+    COLOR_PUFFIN = "#00838f"  # cyan
+
+    # 3 groups (bloom types), 2 bars per group (data, puffin)
+    offsets, ticks, _ = group_positions(3, 2, bar_width=0.28)
+    bar_width = 0.28
 
     own_fig = ax is None
     if own_fig:
         fig, ax = plt.subplots(figsize=(10, 5))
 
-    for i, key in enumerate(BF_KEYS):
+    data_vals = []
+    puffin_vals = []
+    for key in BF_KEYS:
         rows = data["memory_write_mb"][key]
         def _get(v, k):
             return v.get(k, 0) if isinstance(v, dict) else (v if k == "data_mb" else 0)
         data_mb = np.array([_get(r, "data_mb") for r in rows], dtype=float)
         puffin_mb = np.array([_get(r, "puffin_mb") for r in rows], dtype=float)
-        d, p = data_mb[0], puffin_mb[0]
+        data_vals.append(data_mb[0])
+        puffin_vals.append(puffin_mb[0])
 
-        ax.bar(x_pos[i], d, bar_width, color=c[0], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(x_pos[i], p, bar_width, bottom=d, color=c[1], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+    ax.bar(offsets[0], data_vals, bar_width, color=COLOR_DATA, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+    ax.bar(offsets[1], puffin_vals, bar_width, color=COLOR_PUFFIN, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
 
     ax.legend(handles=[
-        mpatches.Patch(color=c[0], label="Total"),
-        mpatches.Patch(color=c[1], label="Puffin"),
+        mpatches.Patch(color=COLOR_DATA, label="Data"),
+        mpatches.Patch(color=COLOR_PUFFIN, label="Puffin"),
     ], loc="upper right")
     ax.set_xticks(ticks)
-    ax.set_xticklabels(tick_labels)
+    ax.set_xticklabels([BF_LABELS[k] for k in BF_KEYS])
     ax.set_xlabel("Bloom Filter Type")
     ax.set_ylabel("Peak Memory Usage (MB)")
     ax.set_title("Peak Memory Usage - Write Path")
