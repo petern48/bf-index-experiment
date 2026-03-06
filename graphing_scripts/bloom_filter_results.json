@@ -64,7 +64,7 @@
         "manifest_overhead_bytes": 0
       },
       {
-        "puffin_bytes": 60029,
+        "puffin_bytes": 60027,
         "manifest_overhead_bytes": 0
       }
     ],
@@ -74,65 +74,65 @@
         "manifest_overhead_bytes": 0
       },
       {
-        "puffin_bytes": 53637720,
+        "puffin_bytes": 53637668,
         "manifest_overhead_bytes": 0
       }
     ]
   },
   "memory_read_mb": {
     "no_bloom_filter": [
-      140.42674,
-      404.98886
+      157.487096,
+      380.917328
     ],
     "row_group_bloom_filter": [
-      130.64847,
-      664.36597
+      199.04477400000002,
+      425.39448400000003
     ],
     "file_level_bloom_filter": [
-      134.85638,
-      524.1958
+      236.976588,
+      417.66812
     ]
   },
   "planning_memory_read_mb": {
     "no_bloom_filter": [
-      121.94678,
-      274.23834
+      110.5095088,
+      262.395546
     ],
     "row_group_bloom_filter": [
-      93.41324,
-      238.36598
+      116.87173399999999,
+      301.85325
     ],
     "file_level_bloom_filter": [
-      130.39062,
-      524.1958
+      207.14512720000002,
+      404.394448
     ]
   },
   "execution_memory_read_mb": {
     "no_bloom_filter": [
-      18.47996,
-      130.75052
+      46.9775872,
+      118.52178199999997
     ],
     "row_group_bloom_filter": [
-      37.23523,
-      425.99999
+      82.17304000000003,
+      123.54123400000003
     ],
     "file_level_bloom_filter": [
-      4.46576,
-      0.0
+      29.831460799999974,
+      13.273671999999976
     ]
   },
   "memory_write_mb": {
     "no_bloom_filter": [
-      0,
-      0
+      0.0,
+      0.0
     ],
     "row_group_bloom_filter": [
-      0,
-      0
+      0.0,
+      0.0
     ],
     "file_level_bloom_filter": [
-      0,
-      0
+      0.0,
+      0.0
     ]
   },
   "time_read_ms": {
@@ -141,13 +141,13 @@
         "metadata_ms": 0,
         "puffin_ms": 0,
         "data_ms": 0,
-        "total_ms": 754
+        "total_ms": 442
       },
       {
         "metadata_ms": 0,
         "puffin_ms": 0,
         "data_ms": 0,
-        "total_ms": 2838
+        "total_ms": 2753
       }
     ],
     "row_group_bloom_filter": [
@@ -155,13 +155,13 @@
         "metadata_ms": 0,
         "puffin_ms": 0,
         "data_ms": 0,
-        "total_ms": 545
+        "total_ms": 435
       },
       {
         "metadata_ms": 0,
         "puffin_ms": 0,
         "data_ms": 0,
-        "total_ms": 1104
+        "total_ms": 845
       }
     ],
     "file_level_bloom_filter": [
@@ -169,13 +169,13 @@
         "metadata_ms": 0,
         "puffin_ms": 0,
         "data_ms": 0,
-        "total_ms": 729
+        "total_ms": 490
       },
       {
         "metadata_ms": 0,
         "puffin_ms": 0,
         "data_ms": 0,
-        "total_ms": 1104
+        "total_ms": 1006
       }
     ]
   },
