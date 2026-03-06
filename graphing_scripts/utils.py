@@ -138,15 +138,15 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
 
         r, s, f, o = read_rg[0], skipped_rg[0], file_bf_skipped_rg[0], other_rg[0]
         ax.bar(x_pos[i], r, bar_width, color=c[0], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(x_pos[i], s, bar_width, bottom=r, color=c[1], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(x_pos[i], f, bar_width, bottom=r + s, color=c[2], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], f, bar_width, bottom=r, color=c[1], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], s, bar_width, bottom=r + f, color=c[2], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
         ax.bar(x_pos[i], o, bar_width, bottom=r + s + f, color=c[3], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
 
     legend_handles = [
-        mpatches.Patch(color=c[0], label="Read"),
-        mpatches.Patch(color=c[1], label="Skipped (row-group BF)"),
-        mpatches.Patch(color=c[2], label="Skipped (file-level BF)"),
         mpatches.Patch(color=c[3], label="Other (e.g. manifest)"),
+        mpatches.Patch(color=c[2], label="Skipped (row-group BF)"),
+        mpatches.Patch(color=c[1], label="Skipped (file-level BF)"),
+        mpatches.Patch(color=c[0], label="Read"),
     ]
     ax.legend(handles=legend_handles, loc="upper right")
 
@@ -166,6 +166,7 @@ def plot_pruning_read_datafiles(data: dict, out_dir: str, display_inline: bool =
     All bars use same segment colors; x-axis labels = bloom filter type."""
     x_pos, ticks, tick_labels, bar_width = bar_positions_3_by_bf()
     c = SEGMENT_COLORS_3
+    c[2] = SEGMENT_COLORS_4[3]  # swap this so that it matches the same color as the manifest color in the row-groups graph
 
     own_fig = ax is None
     if own_fig:
@@ -183,13 +184,13 @@ def plot_pruning_read_datafiles(data: dict, out_dir: str, display_inline: bool =
         rd, ms, bs = read_df[0], manifest_skipped[0], bloom_skipped[0]
 
         ax.bar(x_pos[i], rd, bar_width, color=c[0], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(x_pos[i], ms, bar_width, bottom=rd, color=c[1], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
-        ax.bar(x_pos[i], bs, bar_width, bottom=rd + ms, color=c[2], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], bs, bar_width, bottom=rd, color=c[1], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+        ax.bar(x_pos[i], ms, bar_width, bottom=rd + bs, color=c[2], edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
 
     legend_handles = [
+        mpatches.Patch(color=c[2], label="Skipped (manifest)"),
+        mpatches.Patch(color=c[1], label="Skipped (file bloom filter)"),
         mpatches.Patch(color=c[0], label="Read"),
-        mpatches.Patch(color=c[1], label="Skipped (manifest)"),
-        mpatches.Patch(color=c[2], label="Skipped (bloom filter)"),
     ]
     ax.legend(handles=legend_handles, loc="upper right")
 
