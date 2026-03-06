@@ -26,7 +26,8 @@ BF_LABELS = {
 BF_KEYS   = list(BF_LABELS.keys())
 BF_COLORS = [COLORS["no_bf"], COLORS["rg_bf"], COLORS["file_bf"]]
 
-STACK_ALPHA_LIGHT = 0.45  # lighter shade for the "active/read" portion of stacked bars
+STACK_ALPHA_LIGHT = 0.45  # lightest shade for the portion of stacked bars
+STACK_ALPHA_MEDIUM = 0.65  # medium shade for the portion of stacked bars (only used if there's 3 stacked bars)
 
 STACK_COLORS = {
     "metadata": "#8da0cb",  # periwinkle
@@ -109,7 +110,8 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
 
 
 def plot_pruning_read_datafiles(data: dict, out_dir: str, display_inline: bool = False, ax=None):
-    """Stacked bar showing skipped vs read data files."""
+    """Stacked bar: total height = totalDataFiles. Bottom = read, middle = skipped (manifest), top = bloom filter skipped.
+    readDataFiles = total - manifestSkipped - bloomFilterSkipped (mutually exclusive phases)."""
     sizes = data["dataset_sizes"]
     offsets, ticks, _ = group_positions(len(sizes), 3)
     bar_width = 0.22
@@ -120,22 +122,31 @@ def plot_pruning_read_datafiles(data: dict, out_dir: str, display_inline: bool =
     legend_handles = []
 
     for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
-        rows    = data["pruning_read"][key]
-        totals  = np.array([r["total_data_files"]   for r in rows], dtype=float)
-        skipped = np.array([r["skipped_data_files"] for r in rows], dtype=float)
-        read_df = totals - skipped
+        rows = data["pruning_read"][key]
+        total = np.array([r["total_data_files"] for r in rows], dtype=float)
+        manifest_skipped = np.array(
+            [r.get("manifest_skipped_data_files", r.get("all_skipped_data_files", r.get("skipped_data_files", 0))) for r in rows],  # TODO: revisit which one is the actual name
+            dtype=float,
+        )
+        bloom_skipped = np.array([r.get("bloom_filter_skipped_data_files", 0) for r in rows], dtype=float)
+        # readDataFiles = total - manifestSkipped - bloomFilterSkipped (mutually exclusive phases)
+        read_df = np.maximum(0, total - manifest_skipped - bloom_skipped)
+        other_skipped = manifest_skipped  # manifest-level skips (partition/stats)
 
-        ax.bar(offsets[i], skipped, bar_width, color=color)
-        ax.bar(offsets[i], read_df, bar_width, bottom=skipped,
+        ax.bar(offsets[i], read_df, bar_width, color=color)
+        ax.bar(offsets[i], other_skipped, bar_width, bottom=read_df,
+               color=color, alpha=STACK_ALPHA_MEDIUM)
+        ax.bar(offsets[i], bloom_skipped, bar_width, bottom=read_df + other_skipped,
                color=color, alpha=STACK_ALPHA_LIGHT)
         legend_handles.append(mpatches.Patch(color=color, label=BF_LABELS[key]))
 
-    skip_patch = mpatches.Patch(facecolor="dimgray",                       label="Skipped (pruned)")
-    read_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Read (not pruned)")
+    read_patch = mpatches.Patch(facecolor="dimgray",                       label="Read")
+    other_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_MEDIUM, label="Skipped (manifest)")
+    bloom_patch = mpatches.Patch(facecolor="dimgray", alpha=STACK_ALPHA_LIGHT, label="Skipped (bloom filter)")
 
     color_legend = ax.legend(handles=legend_handles,         loc="upper left",   title="Bloom Filter Type")
     ax.add_artist(color_legend)
-    ax.legend(         handles=[skip_patch, read_patch], loc="upper center", title="Bar Segments")
+    ax.legend(handles=[read_patch, other_patch, bloom_patch], loc="upper center", title="Bar Segments")
 
     ax.set_xticks(ticks)
     ax.set_xticklabels(sizes)

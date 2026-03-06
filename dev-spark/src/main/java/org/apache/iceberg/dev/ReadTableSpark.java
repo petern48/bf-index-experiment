@@ -160,10 +160,11 @@ public class ReadTableSpark {
     Map<String, Long> scanMetrics = getScanMetrics(t3.dataFrame);
     ReadMetrics metrics = new ReadMetrics();
     metrics.skippedRowGroups = getIntMetric(scanMetrics, "skippedRowGroups");
-    metrics.skippedDataFiles = getIntMetric(scanMetrics, "skippedDataFiles");
+    metrics.manifestSkippedDataFiles = getIntMetric(scanMetrics, "skippedDataFiles");
+    metrics.bloomFilterSkippedDataFiles = getIntMetric(scanMetrics, "bloomFilterSkippedDataFiles");
     metrics.totalRowGroups = getIntMetric(scanMetrics, "totalRowGroups");
     metrics.totalScanDataFiles = getIntMetric(scanMetrics, "totalScanDataFiles");
-    metrics.resultDataFiles = getIntMetric(scanMetrics, "resultDataFiles");
+    metrics.resultDataFiles = getIntMetric(scanMetrics, "resultDataFiles");  // NOTE: this is misleading. this is (total - manifestSkipped) before BF skipping. do not use
     metrics.totalDataFileSizeBytes = scanMetrics.get("totalDataFileSize");
     metrics.puffinStatsFileSizeBytes = scanMetrics.get("puffinStatsFileSizeInBytes");
     metrics.puffinStatsFooterSizeBytes = scanMetrics.get("puffinStatsFooterSizeInBytes");
@@ -279,7 +280,7 @@ public class ReadTableSpark {
     // Data file metrics
     printMetric(metrics, "totalScanDataFiles", "Total data files");
     printMetric(metrics, "resultDataFiles", "Result data files");
-    printMetric(metrics, "skippedDataFiles", "Skipped data files (min/max)");
+    printMetric(metrics, "skippedDataFiles", "Skipped data files (manifest)");
     printMetric(metrics, "bloomFilterSkippedDataFiles", "Skipped data files (bloom filter)");
     printMetric(metrics, "totalDataFileSize", "Total data file size (bytes)");
 

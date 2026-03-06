@@ -98,7 +98,9 @@ def build_results(
                 "total_row_groups": _int(total_rg),
                 "skipped_row_groups": _int(r.get("skippedRowGroups")),
                 "total_data_files": _int(w.get("totalDataFiles")),
-                "skipped_data_files": _int(r.get("skippedDataFiles")),
+                "manifest_skipped_data_files": _int(r.get("manifestSkippedDataFiles")),
+                "bloom_filter_skipped_data_files": _int(r.get("bloomFilterSkippedDataFiles")),
+                "result_data_files": _int(r.get("resultDataFiles")),
             })
             disk_storage_bytes[key].append({
                 "puffin_bytes": _int(w.get("puffinDiskSizeInBytes")),
@@ -180,6 +182,18 @@ def main() -> None:
         sys.exit(1)
 
     results = build_results(experiments, dataset_labels)
+
+    # Validate: manifestSkipped + bloomFilterSkipped + readDataFiles == total per experiment
+    for mode, size_label, w, r in experiments:
+        total = w.get("totalDataFiles")
+        manifest_skipped = r.get("manifestSkippedDataFiles") or 0
+        bloom_skipped = r.get("bloomFilterSkippedDataFiles") or 0
+        read_data_files = (total or 0) - manifest_skipped - bloom_skipped
+        if total is not None and (read_data_files < 0 or read_data_files + manifest_skipped + bloom_skipped != total):
+            raise ValueError(
+                f"Validation failed for {mode}/{size_label}: "
+                f"readDataFiles ({read_data_files}) + manifestSkipped ({manifest_skipped}) + bloomFilterSkipped ({bloom_skipped}) != totalDataFiles ({total})"
+            )
     GRAPHING.mkdir(parents=True, exist_ok=True)
     with OUTPUT_JSON.open("w") as f:
         json.dump(results, f, indent=2)

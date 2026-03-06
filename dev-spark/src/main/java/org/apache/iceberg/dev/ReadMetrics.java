@@ -7,7 +7,8 @@ public class ReadMetrics {
   // Counts (from scan metrics)
   public Integer totalScanDataFiles;
   public Integer resultDataFiles;
-  public Integer skippedDataFiles;
+  public Integer manifestSkippedDataFiles;
+  public Integer bloomFilterSkippedDataFiles;
   public Long totalDataFileSizeBytes;
   public Integer totalRowGroups;
   public Integer skippedRowGroups;
