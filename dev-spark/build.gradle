@@ -23,6 +23,7 @@ mainClassName = 'org.apache.iceberg.dev.CreateTableSpark'
 
 run {
   jvmArgs += rootProject.ext.extraJvmArgs
+  jvmArgs += ["-Xmx8g"]
   if (project.hasProperty("runArgs")) {
     args project.runArgs.split(",").collect { it.trim() }
   }
@@ -34,6 +35,7 @@ task runReadTable(type: JavaExec) {
   classpath = sourceSets.main.runtimeClasspath
   mainClass = 'org.apache.iceberg.dev.ReadTableSpark'
   jvmArgs += rootProject.ext.extraJvmArgs
+  jvmArgs += ["-Xmx8g"]
 }
 
 String scalaVersion = '2.13'

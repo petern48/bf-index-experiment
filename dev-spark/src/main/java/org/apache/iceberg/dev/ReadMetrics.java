@@ -25,4 +25,9 @@ public class ReadMetrics {
   public Float manifestReadDuration;
   public Float datafileReadDuration;
   public Float totalReadDuration;
+  // No-match query (data = 'item_10000000'): guaranteed non-existent value within min/max range,
+  // so only bloom filters can prune. Best-case scenario for bloom filter benefit.
+  public Float noMatchMaxMemoryUsage;
+  public Float noMatchReadPuffinMaxMemory;
+  public Float noMatchTotalReadDuration;
 }

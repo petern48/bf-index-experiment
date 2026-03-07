@@ -26,10 +26,20 @@ OUTPUT_JSON = GRAPHING / "bloom_filter_results.json"
 
 # Bloom modes: none, row_group (Parquet only), file_level (Parquet + Puffin)
 BLOOM_MODES = ["none", "row_group", "file_level"]
-# Dataset sizes: (label, num_files, records_per_file). Add more for bigger experiments.
+# Dataset sizes: (label, num_files, records_per_file, warm_read).
+# warm_read=True: runs ReadTableSpark twice per experiment — first run warms the OS page cache,
+# second run captures metrics (simulates repeated/cached query workload).
 DATASET_SIZES = [
-    ("small", 10, 100_000),       # 10 files x 100K rows = 1M rows
-    ("large", 50, 500_000),       # 50 files x 500K rows = 25M rows
+    ("small",       10,   100_000, False),   # 10 files x 100K rows = 1M rows
+    ("large",       50,   500_000, False),   # 50 files x 500K rows = 25M rows
+    ("xlarge",     200,   500_000, False),   # 200 files x 500K rows = 100M rows (tests planning scale)
+    # Warm-cache variants: run ReadTableSpark twice, discard first run, record second.
+    # Second run has puffin/data files already in OS page cache.
+    # JVM heap is still fresh (new process), so deserialization memory cost is unchanged —
+    # only I/O time is amortized.
+    ("small_warm",  10,   100_000, True),    # same as small, warm-cache read
+    ("large_warm",  50,   500_000, True),    # same as large, warm-cache read
+    ("xlarge_warm", 200,  500_000, True),    # same as xlarge, warm-cache read
 ]
 
 
@@ -79,8 +89,10 @@ def build_results(
     pruning_read = {k: [] for k in bf_key.values()}
     disk_storage_bytes = {k: [] for k in bf_key.values()}
     memory_read_mb = {k: [] for k in bf_key.values()}
+    memory_read_no_match_mb = {k: [] for k in bf_key.values()}
     memory_write_mb = {k: [] for k in bf_key.values()}
     time_read_ms = {k: [] for k in bf_key.values()}
+    time_read_no_match_ms = {k: [] for k in bf_key.values()}
     time_write_ms = {k: [] for k in bf_key.values()}
 
     def sec_to_ms(x: Any) -> int:
@@ -121,6 +133,10 @@ def build_results(
                 "max_mb": _n(r.get("maxMemoryUsage")),
                 "puffin_mb": _n(r.get("readPuffinMaxMemory")),
             })
+            memory_read_no_match_mb[key].append({
+                "max_mb": _n(r.get("noMatchMaxMemoryUsage")),
+                "puffin_mb": _n(r.get("noMatchReadPuffinMaxMemory")),
+            })
             memory_write_mb[key].append({
                 "data_mb": _n(w.get("writeDataMaxMemory")),
                 "puffin_mb": _n(w.get("writePuffinMaxMemory")),
@@ -133,6 +149,13 @@ def build_results(
             time_read_ms[key].append({
                 "total_ms": total_read_ms,
                 "puffin_ms": puffin_ms,
+            })
+            no_match_total_ms = r.get("noMatchTotalReadDuration")
+            if no_match_total_ms is not None:
+                no_match_total_ms = round(_n(no_match_total_ms))
+            time_read_no_match_ms[key].append({
+                "total_ms": no_match_total_ms,
+                "puffin_ms": 0,
             })
             total_write_ms = w.get("totalWriteDuration")
             if total_write_ms is not None:
@@ -154,21 +177,23 @@ def build_results(
         "pruning_read": pruning_read,
         "disk_storage_bytes": disk_storage_bytes,
         "memory_read_mb": memory_read_mb,
+        "memory_read_no_match_mb": memory_read_no_match_mb,
         "memory_write_mb": memory_write_mb,
         "time_read_ms": time_read_ms,
+        "time_read_no_match_ms": time_read_no_match_ms,
         "time_write_ms": time_write_ms,
     }
 
 
 def main() -> None:
-    dataset_labels = [label for label, _nf, _rpf in DATASET_SIZES]
+    dataset_labels = [label for label, _nf, _rpf, _warm in DATASET_SIZES]
     print(
         "Running experiments (CreateTableSpark + ReadTableSpark) for each bloom mode and dataset size..."
     )
     print(f"Dataset sizes: {dataset_labels}")
     experiments = []
 
-    for size_label, num_files, records_per_file in DATASET_SIZES:
+    for size_label, num_files, records_per_file, warm_read in DATASET_SIZES:
         for mode in BLOOM_MODES:
             run_args = f"{mode},{num_files},{records_per_file}"
             print(f"\n--- Dataset: {size_label} ({num_files} files x {records_per_file} rows) | Bloom: {mode} ---")
@@ -179,6 +204,9 @@ def main() -> None:
                 continue
             write_metrics = load_json(write_path)
 
+            if warm_read:
+                print("  Warmup read (discarded) — warming OS page cache...")
+                run_gradle(":iceberg-dev-spark:runReadTable")
             run_gradle(":iceberg-dev-spark:runReadTable")
             read_path = DEV_SPARK / "read-metrics.json"
             if not read_path.exists():

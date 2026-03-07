@@ -110,7 +110,15 @@ public class ReadTableSpark {
     long recordsPerFile = numFiles > 0 ? totalRecords / numFiles : 100_000;
 
     // Probe values: mid id, three ids in different files, and their data strings (same formula as CreateTableSpark)
+    // Scan forward from totalRecords/2 until the data hash is well within [2M, 8M], avoiding
+    // edge values (e.g. 0) that would let min/max stats prune most files and skew results.
     long midId = totalRecords / 2;
+    while (true) {
+      long h = (midId * DATA_HASH_MULTIPLIER) % DATA_HASH_MOD;
+      if (h < 0) h += DATA_HASH_MOD;
+      if (h >= 2_000_000L && h <= 8_000_000L) break;
+      midId++;
+    }
     long id1 = recordsPerFile / 2;
     long id2 = recordsPerFile + recordsPerFile / 2;
     long id3 = 2 * recordsPerFile + recordsPerFile / 2;
@@ -151,18 +159,21 @@ public class ReadTableSpark {
             "data IN ('" + data1.replace("'", "''") + "', '" + data2.replace("'", "''") + "', '" + data3.replace("'", "''") + "')",
             "String IN: 3 values; bloom prunes");
 
-    // 5. No match: id = -1 (bloom skips all files; no bloom reads all)
+    // 5. No match: data = 'item_10000000' — value is mathematically impossible (formula produces
+    // id * 7919 % 10_000_000, always in [0, 9_999_999]), so no row matches. Unlike id=-1 which
+    // min/max prunes trivially (min id = 0), this data value falls within the lexicographic range
+    // of every file, so only bloom filters can prune it.
     TrackedQueryResult t5 =
         runQueryWithMemoryTracking(
-            spark, tableName, "id = -1",
-            "No match: id=-1; bloom skips all " + numFiles + " files, no bloom reads all");
+            spark, tableName, "data = 'item_10000000'",
+            "No match: data='item_10000000'; impossible value, bloom prunes all, min/max cannot");
 
     System.out.println("=== Memory Summary ===");
     System.out.println("  1 id=" + midId + ": " + t1.metrics);
     System.out.println("  2 id IN (" + id1 + "," + id2 + "," + id3 + "): " + t2.metrics);
     System.out.println("  3 data='" + dataMid + "': " + t3.metrics);
     System.out.println("  4 data IN (3 values): " + t4.metrics);
-    System.out.println("  5 id=-1: " + t5.metrics);
+    System.out.println("  5 data='item_10000000' (no match): " + t5.metrics);
     System.out.println();
 
     // Export metrics from representative query: string equality (best for showing bloom impact)
@@ -192,6 +203,14 @@ public class ReadTableSpark {
         (puffinDur != null && puffinDur >= 0) ? puffinDur.floatValue() : null;
     metrics.manifestReadDuration = null;
     metrics.datafileReadDuration = null;
+
+    // No-match query metrics (t5): only memory + duration needed for graphs
+    Map<String, Long> noMatchScanMetrics = getScanMetrics(t5.dataFrame);
+    metrics.noMatchMaxMemoryUsage = (float) t5.metrics.peakMemoryMB();
+    metrics.noMatchTotalReadDuration = (float) t5.metrics.durationMs();
+    Long noMatchPuffinMaxMem = noMatchScanMetrics.get("puffinReadMaxMemory");
+    metrics.noMatchReadPuffinMaxMemory =
+        noMatchPuffinMaxMem != null && noMatchPuffinMaxMem > 0 ? noMatchPuffinMaxMem / 1024.0f : null;
 
     exportReadMetrics(metrics);
 

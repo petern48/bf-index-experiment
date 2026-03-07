@@ -96,8 +96,10 @@ def filter_data_by_size(data: dict, size: str) -> dict:
         "pruning_read": {k: [v[idx]] for k, v in data["pruning_read"].items()},
         "disk_storage_bytes": {k: [v[idx]] for k, v in data["disk_storage_bytes"].items()},
         "memory_read_mb": {k: [v[idx]] for k, v in data["memory_read_mb"].items()},
+        "memory_read_no_match_mb": {k: [v[idx]] for k, v in data["memory_read_no_match_mb"].items()},
         "memory_write_mb": {k: [v[idx]] for k, v in data["memory_write_mb"].items()},
         "time_read_ms": {k: [v[idx]] for k, v in data["time_read_ms"].items()},
+        "time_read_no_match_ms": {k: [v[idx]] for k, v in data["time_read_no_match_ms"].items()},
         "time_write_ms": {k: [v[idx]] for k, v in data["time_write_ms"].items()},
     }
     return filtered
@@ -402,6 +404,73 @@ def plot_time_read(data: dict, out_dir: str, display_inline: bool = False, ax=No
 
 
 # ---------------------------------------------------------------------------
+# Chart 5b: Time (Read, No-Match) - data = 'item_10000000'
+# ---------------------------------------------------------------------------
+def plot_time_read_no_match(data: dict, out_dir: str, display_inline: bool = False, ax=None, dataset_size: str = None):
+    """Bar chart: total read duration for the guaranteed no-match query per bloom filter type.
+    No puffin breakdown since for no-match, file_level BF prunes all files before any data read."""
+    x_pos, ticks, tick_labels, bar_width = bar_positions_3_by_bf()
+
+    own_fig = ax is None
+    if own_fig:
+        fig, ax = plt.subplots(figsize=(10, 5))
+
+    for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
+        rows = data["time_read_no_match_ms"][key]
+        total_s = np.array([r.get("total_ms") or 0 for r in rows], dtype=float) / 1000
+        ax.bar(x_pos[i], total_s[0], bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+
+    ax.legend(handles=bf_color_legend_handles(), loc="upper right")
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(tick_labels)
+    ax.set_xlabel("Bloom Filter Type")
+    ax.set_ylabel("Time (seconds)")
+    ax.set_title("Read Time - No-Match Query (data='item_10000000')")
+    if own_fig:
+        fig.tight_layout()
+        save(fig, out_dir, "5b_time_read_no_match.png", display_inline=display_inline, dataset_size=dataset_size)
+
+
+# ---------------------------------------------------------------------------
+# Chart 3c: Memory (Read, No-Match) - data = 'item_10000000'
+# ---------------------------------------------------------------------------
+def plot_memory_read_no_match(data: dict, out_dir: str, display_inline: bool = False, ax=None, dataset_size: str = None):
+    """Clustered bar: Puffin and Total memory for the no-match query per bloom filter type."""
+    COLOR_PUFFIN = "#00838f"
+    COLOR_REST = "#1565c0"
+
+    offsets, ticks, _ = group_positions(3, 2, bar_width=0.28)
+    bar_width = 0.28
+
+    own_fig = ax is None
+    if own_fig:
+        fig, ax = plt.subplots(figsize=(10, 5))
+
+    puffin_vals = []
+    total_vals = []
+    for key in BF_KEYS:
+        rows = data["memory_read_no_match_mb"][key]
+        puffin_vals.append(rows[0].get("puffin_mb") or 0)
+        total_vals.append(rows[0].get("max_mb") or 0)
+
+    ax.bar(offsets[0], puffin_vals, bar_width, color=COLOR_PUFFIN, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+    ax.bar(offsets[1], total_vals, bar_width, color=COLOR_REST, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+
+    ax.legend(handles=[
+        mpatches.Patch(color=COLOR_PUFFIN, label="Puffin Memory"),
+        mpatches.Patch(color=COLOR_REST, label="Total Peak Memory"),
+    ], loc="upper left")
+    ax.set_xticks(ticks + bar_width / 2)
+    ax.set_xticklabels([BF_LABELS[k] for k in BF_KEYS])
+    ax.set_xlabel("Bloom Filter Type")
+    ax.set_ylabel("Peak Memory Usage (MB)")
+    ax.set_title("Peak Memory - No-Match Query (data='item_10000000')")
+    if own_fig:
+        fig.tight_layout()
+        save(fig, out_dir, "3c_memory_read_no_match.png", display_inline=display_inline, dataset_size=dataset_size)
+
+
+# ---------------------------------------------------------------------------
 # Chart 6: Time (Write) - Write Time Breakdown
 # ---------------------------------------------------------------------------
 def plot_time_write(data: dict, out_dir: str, display_inline: bool = False, ax=None, dataset_size: str = None):
@@ -444,12 +513,13 @@ def plot_all_grid(data: dict, out_dir: str, display_inline: bool = False, datase
     Row 1: read_row_groups, read_datafiles
     Row 2: time_write, time_read
     Row 3: memory_write, memory_read
-    Row 4: disk_storage (full width)
+    Row 4: time_read_no_match, memory_read_no_match
+    Row 5: disk_storage (full width)
     """
     from matplotlib.gridspec import GridSpec
 
-    fig = plt.figure(figsize=(14, 16))
-    gs = GridSpec(4, 2, figure=fig, hspace=0.4, wspace=0.3)
+    fig = plt.figure(figsize=(14, 20))
+    gs = GridSpec(5, 2, figure=fig, hspace=0.4, wspace=0.3)
 
     # Row 1: read_row_groups, read_datafiles
     plot_pruning_read_row_groups(data, out_dir, ax=fig.add_subplot(gs[0, 0]), dataset_size=dataset_size)
@@ -463,8 +533,12 @@ def plot_all_grid(data: dict, out_dir: str, display_inline: bool = False, datase
     plot_memory_write(data, out_dir, ax=fig.add_subplot(gs[2, 0]), dataset_size=dataset_size)
     plot_memory_read(data, out_dir, ax=fig.add_subplot(gs[2, 1]), dataset_size=dataset_size)
 
-    # Row 4: disk_storage (full width)
-    plot_disk_storage(data, out_dir, ax=fig.add_subplot(gs[3, :]), dataset_size=dataset_size)
+    # Row 4: no-match query (time + memory)
+    plot_time_read_no_match(data, out_dir, ax=fig.add_subplot(gs[3, 0]), dataset_size=dataset_size)
+    plot_memory_read_no_match(data, out_dir, ax=fig.add_subplot(gs[3, 1]), dataset_size=dataset_size)
+
+    # Row 5: disk_storage (full width)
+    plot_disk_storage(data, out_dir, ax=fig.add_subplot(gs[4, :]), dataset_size=dataset_size)
 
     fig.tight_layout()
     save(fig, out_dir, "all_grid.png", display_inline=display_inline, dataset_size=dataset_size)
