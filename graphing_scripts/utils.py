@@ -144,7 +144,7 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
 
     legend_handles = [
         mpatches.Patch(color=c[3], label="Other (e.g. manifest)"),
-        mpatches.Patch(color=c[2], label="Skipped (row-group BF)"),
+        mpatches.Patch(color=c[2], label="Skipped (row-group BF or stats)"),
         mpatches.Patch(color=c[1], label="Skipped (file-level BF)"),
         mpatches.Patch(color=c[0], label="Read"),
     ]
