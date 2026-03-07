@@ -231,15 +231,30 @@ def plot_disk_storage(data: dict, out_dir: str, display_inline: bool = False, ax
     if own_fig:
         fig, ax = plt.subplots(figsize=(12, 5))
 
+    manifest_annotations = []  # (x, kb) pairs — collected for text labels after bars are drawn
+
     for i, (key, color) in enumerate(zip(BF_KEYS, BF_COLORS)):
         rows = data["disk_storage_bytes"][key]
         values = []
         for size_idx in range(len(sizes)):
             r = rows[size_idx]
-            values.append(_bytes_to_mb(r.get("manifest_bytes", r.get("manifest_overhead_bytes", 0))))
+            manifest_b = r.get("manifest_bytes", r.get("manifest_overhead_bytes", 0))
+            values.append(_bytes_to_mb(manifest_b))
             values.append(_bytes_to_mb(r.get("data_bytes", 0)))
             values.append(_bytes_to_mb(r.get("puffin_bytes", 0)))
+            manifest_annotations.append((offsets[i][size_idx * len(file_types)], manifest_b / 1024))
         ax.bar(offsets[i], np.array(values), bar_width, color=color, edgecolor=EDGE_COLOR, linewidth=LINEWIDTH)
+
+    # Manifest bars are invisible at MB scale (~0.007 MB); annotate each with its actual KB value
+    for x, kb in manifest_annotations:
+        ax.annotate(
+            f"{kb:.1f} KB",
+            xy=(x, 0),
+            xytext=(0, 4),
+            textcoords="offset points",
+            ha="center", va="bottom",
+            fontsize=8, rotation=90, color="#444444",
+        )
 
     # Tick labels: "small\nManifest", "small\nData Files", "small\nPuffin", "large\n..." etc.
     tick_labels = [f"{s}\n{file_labels[ft]}" for s in sizes for ft in file_types]
