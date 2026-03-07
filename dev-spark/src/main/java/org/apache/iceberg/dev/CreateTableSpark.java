@@ -92,13 +92,19 @@ public class CreateTableSpark {
     }
   }
 
+  /** Parquet row group size (1 MiB) so we get many row groups per file for meaningful row-group BF charts. */
+  private static final long ROW_GROUP_SIZE_BYTES = 1024L * 1024;
+
   /** TBLPROPERTIES fragment for CREATE TABLE (no leading/trailing comma). */
   public static String tblPropertiesForBloomMode(String bloomMode) {
+    String rowGroupProp =
+        "'write.parquet.row-group-size-bytes'='" + ROW_GROUP_SIZE_BYTES + "'";
     switch (bloomMode) {
       case "none":
-        return "";
+        return "TBLPROPERTIES (" + rowGroupProp + ")";
       case "row_group":
         return "TBLPROPERTIES ("
+            + rowGroupProp + ","
             + "'write.parquet.bloom-filter-enabled.column.id'='true',"
             + "'write.parquet.bloom-filter-enabled.column.data'='true'"
             + ")";
@@ -106,6 +112,7 @@ public class CreateTableSpark {
       default:
         // Enable both row group-level and file-level bloom filters
         return "TBLPROPERTIES ("
+            + rowGroupProp + ","
             + "'write.parquet.bloom-filter-enabled.column.id'='true',"
             + "'write.parquet.bloom-filter-enabled.column.data'='true',"
             + "'write.puffin.bloom-filter-enabled.column.id'='true',"
@@ -135,6 +142,10 @@ public class CreateTableSpark {
             .getOrCreate();
 
     spark.sparkContext().setLogLevel("ERROR");
+
+    // Spark's Iceberg write path may ignore the table property; set Hadoop config so writers can use it.
+    spark.sparkContext().hadoopConfiguration().set(
+        "write.parquet.row-group-size-bytes", String.valueOf(ROW_GROUP_SIZE_BYTES));
 
     String tableName = "local.default.sample_table_spark";
 

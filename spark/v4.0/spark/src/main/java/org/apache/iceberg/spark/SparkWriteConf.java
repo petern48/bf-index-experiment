@@ -33,6 +33,7 @@ import static org.apache.iceberg.TableProperties.ORC_COMPRESSION;
 import static org.apache.iceberg.TableProperties.ORC_COMPRESSION_STRATEGY;
 import static org.apache.iceberg.TableProperties.PARQUET_COMPRESSION;
 import static org.apache.iceberg.TableProperties.PARQUET_COMPRESSION_LEVEL;
+import static org.apache.iceberg.TableProperties.PARQUET_ROW_GROUP_SIZE_BYTES;
 import static org.apache.spark.sql.connector.write.RowLevelOperation.Command.DELETE;
 
 import java.util.Locale;
@@ -508,6 +509,10 @@ public class SparkWriteConf {
         String parquetCompressionLevel = parquetCompressionLevel();
         if (parquetCompressionLevel != null) {
           writeProperties.put(PARQUET_COMPRESSION_LEVEL, parquetCompressionLevel);
+        }
+        String parquetRowGroupSize = table.properties().get(PARQUET_ROW_GROUP_SIZE_BYTES);
+        if (parquetRowGroupSize != null) {
+          writeProperties.put(PARQUET_ROW_GROUP_SIZE_BYTES, parquetRowGroupSize);
         }
         break;
 
