@@ -133,6 +133,15 @@ def plot_pruning_read_row_groups(data: dict, out_dir: str, display_inline: bool 
             [r.get("row_groups_skipped_by_file_bloom_filter", 0) for r in rows],
             dtype=float,
         )
+        # Only show row-group BF skips (green) for the row-group BF run; only show file-level BF
+        # skips (amber) when that run uses file-level BF. No-BF and file-level-BF bars get 0
+        # row-group skips; no-BF and row-group-BF bars get 0 file-level skips (unless we had both).
+        if key == "no_bloom_filter":
+            skipped_rg = np.zeros_like(skipped_rg)
+            file_bf_skipped_rg = np.zeros_like(file_bf_skipped_rg)
+        elif key == "file_level_bloom_filter":
+            skipped_rg = np.zeros_like(skipped_rg)
+        # row_group_bloom_filter: keep both as-is (file_bf_skipped_rg will typically be 0)
         other_rg = totals - read_rg - skipped_rg - file_bf_skipped_rg
         assert all(other_rg >= 0), f"Note: other row groups < 0 for {key}"
 
