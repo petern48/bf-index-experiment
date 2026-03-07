@@ -22,7 +22,5 @@ public class ReadMetrics {
   public Float maxMemoryUsage;
   public Float readPuffinMaxMemory;
   public Float readPuffinDuration;
-  public Float manifestReadDuration;
-  public Float datafileReadDuration;
   public Float totalReadDuration;
 }

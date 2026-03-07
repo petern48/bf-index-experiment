@@ -13,9 +13,9 @@ public class WriteMetrics {
   public Long puffinDiskSizeInBytes;
   public Long puffinFooterSizeInBytes;
   // Peak memory (MB) per write phase — no extra work, just wraps existing operations
-  public Float writeDataMaxMemory;
+  public Float writeDataMaxMemory;  // manifest + data file writing
   public Float writePuffinMaxMemory;
-  public Float maxMemoryUsage;
+  public Float maxMemoryUsage;  // this is simply max of the above two
   // Duration (ms) per write phase
   public Float writeDataDuration;
   public Float writePuffinDuration;

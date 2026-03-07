@@ -190,8 +190,6 @@ public class ReadTableSpark {
     Long puffinDur = scanMetrics.get("puffinReadDuration");
     metrics.readPuffinDuration =
         (puffinDur != null && puffinDur >= 0) ? puffinDur.floatValue() : null;
-    metrics.manifestReadDuration = null;
-    metrics.datafileReadDuration = null;
 
     exportReadMetrics(metrics);
 
