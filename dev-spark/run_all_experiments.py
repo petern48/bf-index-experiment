@@ -45,22 +45,22 @@ EXPERIMENTS = [
         "SELECT * FROM events_medium_cardinality WHERE device_id = 123456",
         "200,000,000 records",
     ),
-    (
-        "medium_cardinality_false_positive",
-        "medium_cardinality",
-        "false_positive",
-        "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(rand()),1,20) AS payload FROM range(200000000)",
-        "SELECT * FROM events_medium_cardinality WHERE device_id = -1",
-        "200,000,000 records",
-    ),
-    (
-        "medium_cardinality_range",
-        "medium_cardinality",
-        "range",
-        "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(rand()),1,20) AS payload FROM range(200000000)",
-        "SELECT * FROM events_medium_cardinality WHERE device_id BETWEEN 1000 AND 2000",
-        "200,000,000 records",
-    ),
+    # (
+    #     "medium_cardinality_false_positive",
+    #     "medium_cardinality",
+    #     "false_positive",
+    #     "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(rand()),1,20) AS payload FROM range(200000000)",
+    #     "SELECT * FROM events_medium_cardinality WHERE device_id = -1",
+    #     "200,000,000 records",
+    # ),
+    # (
+    #     "medium_cardinality_range",
+    #     "medium_cardinality",
+    #     "range",
+    #     "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(rand()),1,20) AS payload FROM range(200000000)",
+    #     "SELECT * FROM events_medium_cardinality WHERE device_id BETWEEN 1000 AND 2000",
+    #     "200,000,000 records",
+    # ),
 ]
 
 

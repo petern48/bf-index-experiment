@@ -47,6 +47,7 @@ import org.apache.iceberg.dev.WriteMetrics;
 public class CreateTableSpark {
 
   private static final long ROW_GROUP_SIZE_BYTES = 1024L * 1024;
+  private static final int NUM_DATA_FILES = 100;
 
   public static String bloomModeFromArgs(String[] args) {
     if (args == null || args.length == 0) {
@@ -150,7 +151,7 @@ public class CreateTableSpark {
     if ("high_cardinality".equals(experimentId)) {
       tableName = "local.default.users_random";
       writeQuery =
-          "CREATE TABLE users_random AS SELECT id, uuid() AS user_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(100000000)";
+          "CREATE TABLE users_random AS SELECT id, uuid() AS user_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(100000000) DISTRIBUTE BY (id % " + NUM_DATA_FILES + ")";
       totalRecords = 100_000_000L;
 
       spark.sql("DROP TABLE IF EXISTS " + tableName);
@@ -160,7 +161,7 @@ public class CreateTableSpark {
               + tableName
               + " USING iceberg "
               + tblProps
-              + " AS SELECT id, uuid() AS user_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(100000000)";
+              + " AS SELECT id, uuid() AS user_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(100000000) DISTRIBUTE BY (id % " + NUM_DATA_FILES + ")";
       System.out.println("Running: " + createSql);
       MemoryTracker.Result dataResult = MemoryTracker.track(() -> spark.sql(createSql));
       writeDataMaxMemory = (float) dataResult.peakMemoryMB();
@@ -169,7 +170,7 @@ public class CreateTableSpark {
     } else {
       tableName = "local.default.events_medium_cardinality";
       writeQuery =
-          "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(200000000)";
+          "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(200000000) DISTRIBUTE BY (id % " + NUM_DATA_FILES + ")";
       totalRecords = 200_000_000L;
 
       spark.sql("DROP TABLE IF EXISTS " + tableName);
@@ -179,7 +180,7 @@ public class CreateTableSpark {
               + tableName
               + " USING iceberg "
               + tblProps
-              + " AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(200000000)";
+              + " AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(200000000) DISTRIBUTE BY (id % " + NUM_DATA_FILES + ")";
       System.out.println("Running: " + createSql);
       MemoryTracker.Result dataResult = MemoryTracker.track(() -> spark.sql(createSql));
       writeDataMaxMemory = (float) dataResult.peakMemoryMB();
