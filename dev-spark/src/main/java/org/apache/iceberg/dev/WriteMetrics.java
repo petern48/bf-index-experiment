@@ -4,6 +4,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class WriteMetrics {
+  // Experiment metadata (for plotting)
+  public String writeQuery;
+  public Long totalRecords;
   // Counts
   public Integer totalRowGroups;
   public Integer totalDataFiles;

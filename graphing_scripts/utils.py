@@ -100,6 +100,8 @@ def filter_data_by_size(data: dict, size: str) -> dict:
         "time_read_ms": {k: [v[idx]] for k, v in data["time_read_ms"].items()},
         "time_write_ms": {k: [v[idx]] for k, v in data["time_write_ms"].items()},
     }
+    if "experiment_metadata" in data:
+        filtered["experiment_metadata"] = data["experiment_metadata"]
     return filtered
 
 
@@ -441,6 +443,7 @@ def plot_time_write(data: dict, out_dir: str, display_inline: bool = False, ax=N
 # ---------------------------------------------------------------------------
 def plot_all_grid(data: dict, out_dir: str, display_inline: bool = False, dataset_size: str = None):
     """Plot all charts in a grid layout:
+    Row 0: experiment metadata (write query, read query, dataset config)
     Row 1: read_row_groups, read_datafiles
     Row 2: time_write, time_read
     Row 3: memory_write, memory_read
@@ -448,25 +451,48 @@ def plot_all_grid(data: dict, out_dir: str, display_inline: bool = False, datase
     """
     from matplotlib.gridspec import GridSpec
 
-    fig = plt.figure(figsize=(14, 16))
+    fig = plt.figure(figsize=(14, 17))
     gs = GridSpec(4, 2, figure=fig, hspace=0.4, wspace=0.3)
 
-    # Row 1: read_row_groups, read_datafiles
-    plot_pruning_read_row_groups(data, out_dir, ax=fig.add_subplot(gs[0, 0]), dataset_size=dataset_size)
-    plot_pruning_read_datafiles(data, out_dir, ax=fig.add_subplot(gs[0, 1]), dataset_size=dataset_size)
+    # Row 4 (top): experiment metadata header (from CreateTableSpark/ReadTableSpark metrics)
+    meta = data.get("experiment_metadata", {})
+    wq = meta.get("write_query")
+    write_q = (wq.get(dataset_size, "") if dataset_size else "") if isinstance(wq, dict) else (wq or "—")
+    if not write_q:
+        write_q = "—"
+    rq = meta.get("read_query")
+    read_q = (rq.get(dataset_size, "") if dataset_size else "") if isinstance(rq, dict) else (rq or "—")
+    if not read_q:
+        read_q = "—"
+    dataset_cfg = ""
+    if dataset_size and meta.get("dataset_config"):
+        dataset_cfg = meta["dataset_config"].get(dataset_size, "")
+    header_text = (
+        # f"Write: {write_q}\n"  # turned off bc very big
+        f"Read:  {read_q}\n"
+        f"Dataset ({dataset_size or 'all'}): {dataset_cfg or '—'}"
+    )
+
+    # Row 3 (top): read_row_groups, read_datafiles
+    plot_pruning_read_row_groups(data, out_dir, ax=fig.add_subplot(gs[3, 0]), dataset_size=dataset_size)
+    plot_pruning_read_datafiles(data, out_dir, ax=fig.add_subplot(gs[3, 1]), dataset_size=dataset_size)
 
     # Row 2: time_write, time_read
-    plot_time_write(data, out_dir, ax=fig.add_subplot(gs[1, 0]), dataset_size=dataset_size)
-    plot_time_read(data, out_dir, ax=fig.add_subplot(gs[1, 1]), dataset_size=dataset_size)
+    plot_time_write(data, out_dir, ax=fig.add_subplot(gs[2, 0]), dataset_size=dataset_size)
+    plot_time_read(data, out_dir, ax=fig.add_subplot(gs[2, 1]), dataset_size=dataset_size)
 
-    # Row 3: memory_write, memory_read
-    plot_memory_write(data, out_dir, ax=fig.add_subplot(gs[2, 0]), dataset_size=dataset_size)
-    plot_memory_read(data, out_dir, ax=fig.add_subplot(gs[2, 1]), dataset_size=dataset_size)
+    # Row 1: memory_write, memory_read
+    plot_memory_write(data, out_dir, ax=fig.add_subplot(gs[1, 0]), dataset_size=dataset_size)
+    plot_memory_read(data, out_dir, ax=fig.add_subplot(gs[1, 1]), dataset_size=dataset_size)
 
-    # Row 4: disk_storage (full width)
-    plot_disk_storage(data, out_dir, ax=fig.add_subplot(gs[3, :]), dataset_size=dataset_size)
+    # Row 0 (bottom): disk_storage (full width)
+    plot_disk_storage(data, out_dir, ax=fig.add_subplot(gs[0, :]), dataset_size=dataset_size)
 
-    fig.tight_layout()
+    fig.text(0.5, 0.98, header_text, transform=fig.transFigure,
+             fontsize=9, verticalalignment="top", horizontalalignment="center",
+             bbox=dict(boxstyle="round,pad=0.5", facecolor="wheat", alpha=0.3),
+             family="monospace")
+    fig.tight_layout(rect=[0, 0, 1, 0.92])
     save(fig, out_dir, "all_grid.png", display_inline=display_inline, dataset_size=dataset_size)
 
 

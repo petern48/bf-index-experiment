@@ -30,6 +30,7 @@ BLOOM_MODES = ["none", "row_group", "file_level"]
 DATASET_SIZES = [
     ("small", 10, 100_000),       # 10 files x 100K rows = 1M rows
     ("large", 50, 500_000),       # 50 files x 500K rows = 25M rows
+    # ("xlarge", 100, 1_000_000),       # 100 files x 1M rows = 100M rows  # 719MB
 ]
 
 
@@ -149,7 +150,39 @@ def build_results(
                 "total_ms": total_write_ms,
             })
 
+    # Build experiment_metadata from metrics (written by CreateTableSpark and ReadTableSpark)
+    write_query_by_size: Dict[str, str] = {}
+    read_query_by_size: Dict[str, str] = {}
+    dataset_config_by_size: Dict[str, str] = {}
+    for size_label in dataset_size_labels:
+        pair = by_mode_size.get(("none", size_label)) or next(
+            (p for (m, s), p in by_mode_size.items() if s == size_label), (None, None)
+        )
+        if pair:
+            w, r = pair
+            if w:
+                write_query_by_size[size_label] = w.get("writeQuery") or ""
+                nf = w.get("numDataFiles")
+                rpf = w.get("recordsPerFile")
+                total = w.get("totalRecords")
+                if nf is not None and rpf is not None and total is not None:
+                    dataset_config_by_size[size_label] = (
+                        f"{nf} files × {rpf:,} rows = {total:,} records"
+                    )
+                elif nf is not None and rpf is not None:
+                    dataset_config_by_size[size_label] = (
+                        f"{nf} files × {rpf:,} rows = {nf * rpf:,} records"
+                    )
+            if r:
+                read_query_by_size[size_label] = r.get("readQuery") or ""
+    experiment_metadata = {
+        "write_query": write_query_by_size,
+        "read_query": read_query_by_size,
+        "dataset_config": dataset_config_by_size,
+    }
+
     return {
+        "experiment_metadata": experiment_metadata,
         "dataset_sizes": dataset_size_labels,
         "pruning_read": pruning_read,
         "disk_storage_bytes": disk_storage_bytes,

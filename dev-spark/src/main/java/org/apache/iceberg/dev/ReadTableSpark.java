@@ -166,8 +166,10 @@ public class ReadTableSpark {
     System.out.println();
 
     // Export metrics from representative query: string equality (best for showing bloom impact)
+    String readPredicate = "data = '" + dataMid.replace("'", "''") + "'";
     Map<String, Long> scanMetrics = getScanMetrics(t3.dataFrame);
     ReadMetrics metrics = new ReadMetrics();
+    metrics.readQuery = readPredicate;
     metrics.allSkippedRowGroups = getIntMetric(scanMetrics, "skippedRowGroups");
     metrics.manifestSkippedDataFiles = getIntMetric(scanMetrics, "skippedDataFiles");
     metrics.bloomFilterSkippedDataFiles = getIntMetric(scanMetrics, "bloomFilterSkippedDataFiles");

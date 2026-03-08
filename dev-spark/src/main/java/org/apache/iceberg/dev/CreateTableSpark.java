@@ -288,6 +288,16 @@ public class CreateTableSpark {
     // NOTE: this doesn't actually set the exact number of datafiles we specified any more after changing to purely a spark query
     // if (actualDataFiles != numDataFiles) { throw new IllegalStateException("Actual data files (" + actualDataFiles + ") != expected data files (" + numDataFiles + ")"); }
     WriteMetrics metrics = new WriteMetrics();
+    metrics.writeQuery =
+        "spark.range("
+            + totalRecords
+            + ").withColumn(\"data\", concat(lit(\"item_\"), cast((id * "
+            + dataHashMultiplier
+            + " % "
+            + dataHashMod
+            + ") as string))).withColumn(\"created_at\", timestampadd(SECOND, id, timestamp('2024-01-15T10:00:00Z'))).repartition(numFiles, id/recordsPerFile).sortWithinPartitions(\"id\"); df.writeTo(table).append()";
+    metrics.totalRecords = totalRecords;
+
     metrics.totalDataFiles = actualDataFiles;
     metrics.totalRowGroups = totalRowGroups;
     metrics.dataFileDiskSizeInBytes = totalDataFileSizeBytes;
