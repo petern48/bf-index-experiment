@@ -124,6 +124,11 @@ public class ReadTableSpark {
           readQuery = "SELECT * FROM local.default.events_medium_cardinality WHERE rand_id BETWEEN 1000 AND 2000";
           df = spark.sql(readQuery);
           break;
+        case "absent":
+          // rand_id=2000000 is excluded in write; value is in [0,3999999] so min/max won't prune
+          readQuery = "SELECT * FROM local.default.events_medium_cardinality WHERE rand_id = 2000000";
+          df = spark.sql(readQuery);
+          break;
         default:
           throw new IllegalArgumentException("Unknown read_query_id for medium_cardinality: " + readQueryId);
       }

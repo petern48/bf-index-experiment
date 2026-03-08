@@ -48,6 +48,10 @@ public class CreateTableSpark {
 
   private static final long ROW_GROUP_SIZE_BYTES = 1024L * 1024;
   private static final int NUM_DATA_FILES = 100;
+  /** Max bytes per bloom filter bitset (default 1MB). Larger = fewer false positives. */
+  private static final long BLOOM_FILTER_MAX_BYTES = 4L * 1024 * 1024;
+  /** False positive probability per column (default 0.01). Lower = larger bloom filter. */
+  private static final double BLOOM_FILTER_FPP = 0.001;
 
   public static String bloomModeFromArgs(String[] args) {
     if (args == null || args.length == 0) {
@@ -67,6 +71,13 @@ public class CreateTableSpark {
   private static String tblPropertiesForExperiment(String bloomMode, String experimentId) {
     String rowGroupProp =
         "'write.parquet.row-group-size-bytes'='" + ROW_GROUP_SIZE_BYTES + "'";
+    String bloomSizeProps =
+        "'write.parquet.bloom-filter-max-bytes'='" + BLOOM_FILTER_MAX_BYTES + "',"
+            + "'write.parquet.bloom-filter-fpp.column.id'='" + BLOOM_FILTER_FPP + "',"
+            + "'write.parquet.bloom-filter-fpp.column.user_id'='" + BLOOM_FILTER_FPP + "',"
+            + "'write.parquet.bloom-filter-fpp.column.payload'='" + BLOOM_FILTER_FPP + "',"
+            + "'write.parquet.bloom-filter-fpp.column.rand_id'='" + BLOOM_FILTER_FPP + "',"
+            + "'write.parquet.bloom-filter-fpp.column.rand_str'='" + BLOOM_FILTER_FPP + "'";
     switch (bloomMode) {
       case "none":
         return "TBLPROPERTIES (" + rowGroupProp + ")";
@@ -74,6 +85,7 @@ public class CreateTableSpark {
         if ("high_cardinality".equals(experimentId)) {
           return "TBLPROPERTIES ("
               + rowGroupProp + ","
+              + bloomSizeProps + ","
               + "'write.parquet.bloom-filter-enabled.column.id'='true',"
               + "'write.parquet.bloom-filter-enabled.column.user_id'='true',"
               + "'write.parquet.bloom-filter-enabled.column.payload'='true'"
@@ -81,6 +93,7 @@ public class CreateTableSpark {
         } else {
           return "TBLPROPERTIES ("
               + rowGroupProp + ","
+              + bloomSizeProps + ","
               + "'write.parquet.bloom-filter-enabled.column.rand_id'='true',"
               + "'write.parquet.bloom-filter-enabled.column.rand_str'='true'"
               + ")";
@@ -90,6 +103,7 @@ public class CreateTableSpark {
         if ("high_cardinality".equals(experimentId)) {
           return "TBLPROPERTIES ("
               + rowGroupProp + ","
+              + bloomSizeProps + ","
               + "'write.parquet.bloom-filter-enabled.column.id'='true',"
               + "'write.parquet.bloom-filter-enabled.column.user_id'='true',"
               + "'write.parquet.bloom-filter-enabled.column.payload'='true',"
@@ -100,6 +114,7 @@ public class CreateTableSpark {
         } else {
           return "TBLPROPERTIES ("
               + rowGroupProp + ","
+              + bloomSizeProps + ","
               + "'write.parquet.bloom-filter-enabled.column.rand_id'='true',"
               + "'write.parquet.bloom-filter-enabled.column.rand_str'='true',"
               + "'write.puffin.bloom-filter-enabled.column.rand_id'='true',"
@@ -131,6 +146,8 @@ public class CreateTableSpark {
     spark.sparkContext().setLogLevel("ERROR");
     spark.sparkContext().hadoopConfiguration().set(
         "write.parquet.row-group-size-bytes", String.valueOf(ROW_GROUP_SIZE_BYTES));
+    spark.sparkContext().hadoopConfiguration().set(
+        "write.parquet.bloom-filter-max-bytes", String.valueOf(BLOOM_FILTER_MAX_BYTES));
 
     spark.sql("USE local");
     spark.sql("CREATE NAMESPACE IF NOT EXISTS default");
@@ -160,8 +177,10 @@ public class CreateTableSpark {
       System.out.println("Write: " + dataResult);
     } else {
       tableName = "local.default.events_medium_cardinality";
+      // Exclude rand_id=2000000 so "absent" query can test bloom-filter-only pruning.
+      // Value is in [0,3999999] so min/max stats won't filter; only bloom filters will prune.
       writeQuery =
-          "CREATE TABLE events_medium_cardinality USING iceberg PARTITIONED BY (truncate(2000000, id)) AS SELECT id, cast(rand()*4000000 as int) AS rand_id, substr(md5(cast(rand() as string)),1,20) AS rand_str FROM range(200000000)";
+          "CREATE TABLE events_medium_cardinality USING iceberg PARTITIONED BY (truncate(2000000, id)) AS SELECT id, CASE WHEN cast(rand()*4000000 as int) = 2000000 THEN 2000001 ELSE cast(rand()*4000000 as int) END AS rand_id, substr(md5(cast(rand() as string)),1,20) AS rand_str FROM range(200000000)";
       spark.sql("DROP TABLE IF EXISTS " + tableName);
       String tblProps = tblPropertiesForExperiment(bloomMode, experimentId);
       String createSql =
@@ -170,7 +189,7 @@ public class CreateTableSpark {
               + " USING iceberg "
               + " PARTITIONED BY (truncate(2000000, id)) "
               + tblProps
-              + " AS SELECT id, cast(rand()*4000000 as int) AS rand_id, substr(md5(cast(rand() as string)),1,20) AS rand_str FROM range(200000000)";
+              + " AS SELECT id, CASE WHEN cast(rand()*4000000 as int) = 2000000 THEN 2000001 ELSE cast(rand()*4000000 as int) END AS rand_id, substr(md5(cast(rand() as string)),1,20) AS rand_str FROM range(200000000)";
       System.out.println("Running: " + createSql);
       MemoryTracker.Result dataResult = MemoryTracker.track(() -> spark.sql(createSql));
       writeDataMaxMemory = (float) dataResult.peakMemoryMB();
