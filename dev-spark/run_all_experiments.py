@@ -6,9 +6,9 @@ graphing_scripts/bloom_filter_results.json. Each experiment produces a separate 
 Experiments:
   1) High cardinality: users_random (100M rows), read WHERE user_id IN (...)
   2) Medium cardinality: events_medium_cardinality (200M rows)
-     2a) WHERE device_id = 123456
-     2b) WHERE device_id = -1 (false positive test)
-     2c) WHERE device_id BETWEEN 1000 AND 2000 (range query)
+     2a) WHERE rand_id = 123456 AND id BETWEEN 50000000 AND 50001000
+     2b) WHERE rand_id = -1 (false positive test)
+     2c) WHERE rand_id BETWEEN 1000 AND 2000 (range query)
 
 Usage (from repo root):
   python dev-spark/run_all_experiments.py
@@ -29,36 +29,36 @@ BLOOM_MODES = ["none", "row_group", "file_level"]
 
 # (experiment_base, read_query_id) -> (write_query_display, read_query_display, dataset_config)
 EXPERIMENTS = [
-    (
-        "high_cardinality_in",
-        "high_cardinality",
-        "in",
-        "CREATE TABLE users_random AS SELECT id, uuid() AS user_id, substr(md5(rand()),1,20) AS payload FROM range(100000000)",
-        "SELECT * FROM users_random WHERE user_id IN ('uuid1','uuid2','uuid3')",
-        "100,000,000 records",
-    ),
+    # (
+    #     "high_cardinality_in",
+    #     "high_cardinality",
+    #     "in",
+    #     "CREATE TABLE users_random AS SELECT id, uuid() AS user_id, substr(md5(rand()),1,20) AS payload FROM range(100000000)",
+    #     "SELECT * FROM users_random WHERE user_id IN ('uuid1','uuid2','uuid3')",
+    #     "100,000,000 records",
+    # ),
     (
         "medium_cardinality_where",
         "medium_cardinality",
         "where",
-        "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(rand()),1,20) AS payload FROM range(200000000)",
-        "SELECT * FROM events_medium_cardinality WHERE device_id = 123456",
+        "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*4000000 as int) AS rand_id, substr(md5(cast(rand() as string)),1,20) AS rand_str FROM range(200000000)",
+        "SELECT * FROM events_medium_cardinality WHERE rand_id = 123456 AND id BETWEEN 0 AND 169999999",
         "200,000,000 records",
     ),
     # (
     #     "medium_cardinality_false_positive",
     #     "medium_cardinality",
     #     "false_positive",
-    #     "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(rand()),1,20) AS payload FROM range(200000000)",
-    #     "SELECT * FROM events_medium_cardinality WHERE device_id = -1",
+    #     "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS rand_id, substr(md5(cast(rand() as string)),1,20) AS rand_str FROM range(200000000)",
+    #     "SELECT * FROM events_medium_cardinality WHERE rand_id = -1",
     #     "200,000,000 records",
     # ),
     # (
     #     "medium_cardinality_range",
     #     "medium_cardinality",
     #     "range",
-    #     "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(rand()),1,20) AS payload FROM range(200000000)",
-    #     "SELECT * FROM events_medium_cardinality WHERE device_id BETWEEN 1000 AND 2000",
+    #     "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS rand_id, substr(md5(cast(rand() as string)),1,20) AS rand_str FROM range(200000000)",
+    #     "SELECT * FROM events_medium_cardinality WHERE rand_id BETWEEN 1000 AND 2000",
     #     "200,000,000 records",
     # ),
 ]

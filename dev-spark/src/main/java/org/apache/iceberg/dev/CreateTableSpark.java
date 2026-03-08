@@ -81,10 +81,8 @@ public class CreateTableSpark {
         } else {
           return "TBLPROPERTIES ("
               + rowGroupProp + ","
-              + "'write.parquet.bloom-filter-enabled.column.id'='true',"
-              + "'write.parquet.bloom-filter-enabled.column.device_id'='true',"
-              + "'write.parquet.bloom-filter-enabled.column.tenant_id'='true',"
-              + "'write.parquet.bloom-filter-enabled.column.payload'='true'"
+              + "'write.parquet.bloom-filter-enabled.column.rand_id'='true',"
+              + "'write.parquet.bloom-filter-enabled.column.rand_str'='true'"
               + ")";
         }
       case "file_level":
@@ -102,14 +100,10 @@ public class CreateTableSpark {
         } else {
           return "TBLPROPERTIES ("
               + rowGroupProp + ","
-              + "'write.parquet.bloom-filter-enabled.column.id'='true',"
-              + "'write.parquet.bloom-filter-enabled.column.device_id'='true',"
-              + "'write.parquet.bloom-filter-enabled.column.tenant_id'='true',"
-              + "'write.parquet.bloom-filter-enabled.column.payload'='true',"
-              + "'write.puffin.bloom-filter-enabled.column.id'='true',"
-              + "'write.puffin.bloom-filter-enabled.column.device_id'='true',"
-              + "'write.puffin.bloom-filter-enabled.column.tenant_id'='true',"
-              + "'write.puffin.bloom-filter-enabled.column.payload'='true'"
+              + "'write.parquet.bloom-filter-enabled.column.rand_id'='true',"
+              + "'write.parquet.bloom-filter-enabled.column.rand_str'='true',"
+              + "'write.puffin.bloom-filter-enabled.column.rand_id'='true',"
+              + "'write.puffin.bloom-filter-enabled.column.rand_str'='true'"
               + ")";
         }
     }
@@ -170,7 +164,7 @@ public class CreateTableSpark {
     } else {
       tableName = "local.default.events_medium_cardinality";
       writeQuery =
-          "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(200000000) DISTRIBUTE BY (id % " + NUM_DATA_FILES + ")";
+          "CREATE TABLE events_medium_cardinality USING iceberg PARTITIONED BY (truncate(2000000, id)) AS SELECT id, cast(rand()*4000000 as int) AS rand_id, substr(md5(cast(rand() as string)),1,20) AS rand_str FROM range(200000000)";
       totalRecords = 200_000_000L;
 
       spark.sql("DROP TABLE IF EXISTS " + tableName);
@@ -179,8 +173,9 @@ public class CreateTableSpark {
           "CREATE TABLE "
               + tableName
               + " USING iceberg "
+              + " PARTITIONED BY (truncate(2000000, id)) "
               + tblProps
-              + " AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(200000000) DISTRIBUTE BY (id % " + NUM_DATA_FILES + ")";
+              + " AS SELECT id, cast(rand()*4000000 as int) AS rand_id, substr(md5(cast(rand() as string)),1,20) AS rand_str FROM range(200000000)";
       System.out.println("Running: " + createSql);
       MemoryTracker.Result dataResult = MemoryTracker.track(() -> spark.sql(createSql));
       writeDataMaxMemory = (float) dataResult.peakMemoryMB();
@@ -199,7 +194,7 @@ public class CreateTableSpark {
     if (bloomMode.equals("file_level")) {
       String[] bloomCols = "high_cardinality".equals(experimentId)
           ? new String[]{"id", "user_id", "payload"}
-          : new String[]{"id", "device_id", "tenant_id", "payload"};
+          : new String[]{"rand_id", "rand_str"};
       MemoryTracker.TrackedResult<ComputeTableStats.Result> puffinTracked =
           MemoryTracker.trackWithResult(
               () -> SparkActions.get().computeTableStats(table).columns(bloomCols).execute());

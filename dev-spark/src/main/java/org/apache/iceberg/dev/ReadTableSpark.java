@@ -113,15 +113,15 @@ public class ReadTableSpark {
       // tableName = "local.default.events_medium_cardinality";
       switch (readQueryId) {
         case "where":
-          readQuery = "SELECT * FROM local.default.events_medium_cardinality WHERE device_id = 123456";
+          readQuery = "SELECT * FROM local.default.events_medium_cardinality WHERE rand_id = 123456 AND id BETWEEN 0 AND 169999999";
           df = spark.sql(readQuery);
           break;
         case "false_positive":
-          readQuery = "SELECT * FROM local.default.events_medium_cardinality WHERE device_id = -1";
+          readQuery = "SELECT * FROM local.default.events_medium_cardinality WHERE rand_id = -1";
           df = spark.sql(readQuery);
           break;
         case "range":
-          readQuery = "SELECT * FROM local.default.events_medium_cardinality WHERE device_id BETWEEN 1000 AND 2000";
+          readQuery = "SELECT * FROM local.default.events_medium_cardinality WHERE rand_id BETWEEN 1000 AND 2000";
           df = spark.sql(readQuery);
           break;
         default:
