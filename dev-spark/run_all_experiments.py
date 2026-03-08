@@ -1,40 +1,70 @@
 #!/usr/bin/env python3
 """
-Run CreateTableSpark + ReadTableSpark for each bloom mode, then write
-graphing_scripts/bloom_filter_results.json in the format expected by the plotting scripts.
+Run CreateTableSpark + ReadTableSpark for each bloom mode and experiment, then write
+graphing_scripts/bloom_filter_results.json. Each experiment produces a separate figure.
+
+Experiments:
+  1) High cardinality: users_random (100M rows), read WHERE user_id IN (...)
+  2) Medium cardinality: events_medium_cardinality (200M rows)
+     2a) WHERE device_id = 123456
+     2b) WHERE device_id = -1 (false positive test)
+     2c) WHERE device_id BETWEEN 1000 AND 2000 (range query)
 
 Usage (from repo root):
   python dev-spark/run_all_experiments.py
-
-Or from dev-spark:
-  python run_all_experiments.py
-
-Requires: dev-spark/write-metrics.json and dev-spark/read-metrics.json are produced
-by each run (CreateTableSpark writes write-metrics.json, ReadTableSpark writes read-metrics.json).
 """
 
 import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEV_SPARK = REPO_ROOT / "dev-spark"
 GRAPHING = REPO_ROOT / "graphing_scripts"
 OUTPUT_JSON = GRAPHING / "bloom_filter_results.json"
 
-# Bloom modes: none, row_group (Parquet only), file_level (Parquet + Puffin)
 BLOOM_MODES = ["none", "row_group", "file_level"]
-# Dataset sizes: (label, num_files, records_per_file). Add more for bigger experiments.
-DATASET_SIZES = [
-    ("small", 10, 100_000),       # 10 files x 100K rows = 1M rows
-    ("large", 50, 500_000),       # 50 files x 500K rows = 25M rows
-    # ("xlarge", 100, 1_000_000),       # 100 files x 1M rows = 100M rows  # 719MB
+
+# (experiment_base, read_query_id) -> (write_query_display, read_query_display, dataset_config)
+EXPERIMENTS = [
+    (
+        "high_cardinality_in",
+        "high_cardinality",
+        "in",
+        "CREATE TABLE users_random AS SELECT id, uuid() AS user_id, substr(md5(rand()),1,20) AS payload FROM range(100000000)",
+        "SELECT * FROM users_random WHERE user_id IN ('uuid1','uuid2','uuid3')",
+        "100,000,000 records",
+    ),
+    (
+        "medium_cardinality_where",
+        "medium_cardinality",
+        "where",
+        "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(rand()),1,20) AS payload FROM range(200000000)",
+        "SELECT * FROM events_medium_cardinality WHERE device_id = 123456",
+        "200,000,000 records",
+    ),
+    (
+        "medium_cardinality_false_positive",
+        "medium_cardinality",
+        "false_positive",
+        "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(rand()),1,20) AS payload FROM range(200000000)",
+        "SELECT * FROM events_medium_cardinality WHERE device_id = -1",
+        "200,000,000 records",
+    ),
+    (
+        "medium_cardinality_range",
+        "medium_cardinality",
+        "range",
+        "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(rand()),1,20) AS payload FROM range(200000000)",
+        "SELECT * FROM events_medium_cardinality WHERE device_id BETWEEN 1000 AND 2000",
+        "200,000,000 records",
+    ),
 ]
 
 
-def run_gradle(task: str, run_args: Optional[str] = None) -> None:
+def run_gradle(task: str, run_args: str | None = None) -> None:
     cmd = ["./gradlew", task]
     if run_args is not None:
         cmd.append(f"-PrunArgs={run_args}")
@@ -50,7 +80,6 @@ def load_json(path: Path) -> Dict[str, Any]:
 
 
 def _n(v: Any, default: float = 0) -> float:
-    """Coerce value to number; use default if None or missing."""
     if v is None:
         return default
     return float(v)
@@ -64,18 +93,17 @@ def _int(v: Any, default: int = 0) -> int:
 
 def build_results(
     experiments: List[Tuple[str, str, Dict[str, Any], Dict[str, Any]]],
-    dataset_size_labels: List[str],
 ) -> Dict[str, Any]:
-    """Build bloom_filter_results.json in the format expected by graphing_scripts."""
+    """Build bloom_filter_results.json. experiments: (bloom_mode, experiment_id, write_metrics, read_metrics)."""
     bf_key = {
         "none": "no_bloom_filter",
         "row_group": "row_group_bloom_filter",
         "file_level": "file_level_bloom_filter",
     }
-    # Index by (mode, size_label) for lookup
-    by_mode_size: Dict[Tuple[str, str], Tuple[Dict[str, Any], Dict[str, Any]]] = {}
-    for mode, size_label, w, r in experiments:
-        by_mode_size[(mode, size_label)] = (w, r)
+    experiment_ids = list(dict.fromkeys(eid for _m, eid, _w, _r in experiments))
+    by_mode_exp: Dict[Tuple[str, str], Tuple[Dict[str, Any], Dict[str, Any]]] = {}
+    for mode, exp_id, w, r in experiments:
+        by_mode_exp[(mode, exp_id)] = (w, r)
 
     pruning_read = {k: [] for k in bf_key.values()}
     disk_storage_bytes = {k: [] for k in bf_key.values()}
@@ -89,25 +117,17 @@ def build_results(
 
     for key in bf_key.values():
         mode = next(m for m, k in bf_key.items() if k == key)
-        for size_label in dataset_size_labels:
-            pair = by_mode_size.get((mode, size_label))
+        for exp_id in experiment_ids:
+            pair = by_mode_exp.get((mode, exp_id))
             if not pair:
                 continue
             w, r = pair
-            # write_rg = w.get("totalRowGroups")
-            # read_rg = r.get("totalRowGroups")  # don't use totalRowGroups from read, it's not right (it's less than that of write)
             total_row_groups = w.get("totalRowGroups")
-            # if write_rg is not None:
-            #     total_rg = write_rg
-            #     if read_rg is not None and write_rg != read_rg:
-            #         raise Exception(f"Note: totalRowGroups differs (write={write_rg}, read={read_rg});")
             pruning_read[key].append({
                 "total_row_groups": _int(total_row_groups),
                 "row_groups_read": _int(r.get("rowGroupsRead")),
                 "skipped_row_groups": _int(r.get("allSkippedRowGroups")),
-                "row_groups_skipped_by_file_bloom_filter": _int(
-                    r.get("rowGroupsSkippedByFileBloomFilter")
-                ),
+                "row_groups_skipped_by_file_bloom_filter": _int(r.get("rowGroupsSkippedByFileBloomFilter")),
                 "total_data_files": _int(w.get("totalDataFiles")),
                 "manifest_skipped_data_files": _int(r.get("manifestSkippedDataFiles")),
                 "bloom_filter_skipped_data_files": _int(r.get("bloomFilterSkippedDataFiles")),
@@ -126,7 +146,6 @@ def build_results(
                 "data_mb": _n(w.get("writeDataMaxMemory")),
                 "puffin_mb": _n(w.get("writePuffinMaxMemory")),
             })
-            # Read durations: totalReadDuration (bar height), readPuffinDuration (subset)
             total_read_ms = r.get("totalReadDuration")
             if total_read_ms is not None:
                 total_read_ms = round(_n(total_read_ms))
@@ -135,55 +154,34 @@ def build_results(
                 "total_ms": total_read_ms,
                 "puffin_ms": puffin_ms,
             })
-            total_write_ms = w.get("totalWriteDuration")
-            if total_write_ms is not None:
-                total_write_ms = round(sec_to_ms(total_write_ms))
-            # writeDataDuration and writePuffinDuration are in ms
             data_ms = _n(w.get("writeDataDuration"))
             puffin_ms = _n(w.get("writePuffinDuration"))
-            if total_write_ms is None and (data_ms > 0 or puffin_ms > 0):
-                total_write_ms = round(data_ms + puffin_ms)
+            total_write_ms = round(data_ms + puffin_ms) if (data_ms > 0 or puffin_ms > 0) else None
             time_write_ms[key].append({
-                "metadata_ms": sec_to_ms(w.get("manifestWriteDuration")),
+                "metadata_ms": 0,
                 "puffin_ms": puffin_ms,
                 "data_ms": data_ms,
                 "total_ms": total_write_ms,
             })
 
-    # Build experiment_metadata from metrics (written by CreateTableSpark and ReadTableSpark)
-    write_query_by_size: Dict[str, str] = {}
-    read_query_by_size: Dict[str, str] = {}
-    dataset_config_by_size: Dict[str, str] = {}
-    for size_label in dataset_size_labels:
-        pair = by_mode_size.get(("none", size_label)) or next(
-            (p for (m, s), p in by_mode_size.items() if s == size_label), (None, None)
+    exp_meta = {eid: {} for eid in experiment_ids}
+    for exp_id, _base, _rq, write_display, read_display, dataset_display in EXPERIMENTS:
+        if exp_id not in exp_meta:
+            continue
+        pair = by_mode_exp.get(("none", exp_id)) or next(
+            (p for (m, e), p in by_mode_exp.items() if e == exp_id), (None, None)
         )
         if pair:
             w, r = pair
-            if w:
-                write_query_by_size[size_label] = w.get("writeQuery") or ""
-                nf = w.get("numDataFiles")
-                rpf = w.get("recordsPerFile")
-                total = w.get("totalRecords")
-                if nf is not None and rpf is not None and total is not None:
-                    dataset_config_by_size[size_label] = (
-                        f"{nf} files × {rpf:,} rows = {total:,} records"
-                    )
-                elif nf is not None and rpf is not None:
-                    dataset_config_by_size[size_label] = (
-                        f"{nf} files × {rpf:,} rows = {nf * rpf:,} records"
-                    )
-            if r:
-                read_query_by_size[size_label] = r.get("readQuery") or ""
-    experiment_metadata = {
-        "write_query": write_query_by_size,
-        "read_query": read_query_by_size,
-        "dataset_config": dataset_config_by_size,
-    }
+            exp_meta[exp_id] = {
+                "write_query": w.get("writeQuery") or write_display,
+                "read_query": r.get("readQuery") or read_display,
+                "dataset_config": dataset_display,
+            }
 
     return {
-        "experiment_metadata": experiment_metadata,
-        "dataset_sizes": dataset_size_labels,
+        "experiments": experiment_ids,
+        "experiment_metadata": exp_meta,
         "pruning_read": pruning_read,
         "disk_storage_bytes": disk_storage_bytes,
         "memory_read_mb": memory_read_mb,
@@ -194,56 +192,46 @@ def build_results(
 
 
 def main() -> None:
-    dataset_labels = [label for label, _nf, _rpf in DATASET_SIZES]
-    print(
-        "Running experiments (CreateTableSpark + ReadTableSpark) for each bloom mode and dataset size..."
-    )
-    print(f"Dataset sizes: {dataset_labels}")
-    experiments = []
+    print("Running experiments (CreateTableSpark + ReadTableSpark)...")
+    experiments: List[Tuple[str, str, Dict[str, Any], Dict[str, Any]]] = []
+    # For medium_cardinality, create once per bloom mode then run 3 reads
+    seen_create: Set[Tuple[str, str]] = set()
 
-    for size_label, num_files, records_per_file in DATASET_SIZES:
+    for exp_id, exp_base, read_query_id, _write_display, _read_display, _dataset in EXPERIMENTS:
         for mode in BLOOM_MODES:
-            run_args = f"{mode},{num_files},{records_per_file}"
-            print(f"\n--- Dataset: {size_label} ({num_files} files x {records_per_file} rows) | Bloom: {mode} ---")
-            run_gradle(":iceberg-dev-spark:run", run_args=run_args)
+            create_key = (mode, exp_base)
+            if create_key not in seen_create:
+                print(f"\n--- Create {exp_base} | Bloom: {mode} ---")
+                run_gradle(":iceberg-dev-spark:run", run_args=f"{mode},{exp_base}")
+                seen_create.add(create_key)
+
             write_path = DEV_SPARK / "write-metrics.json"
             if not write_path.exists():
-                print(f"  WARNING: {write_path} not found after CreateTableSpark")
+                print(f"  WARNING: {write_path} not found")
                 continue
             write_metrics = load_json(write_path)
 
-            run_gradle(":iceberg-dev-spark:runReadTable")
+            print(f"\n--- Read {exp_id} | Bloom: {mode} ---")
+            run_gradle(":iceberg-dev-spark:runReadTable", run_args=f"{mode},{exp_base},{read_query_id}")
             read_path = DEV_SPARK / "read-metrics.json"
             if not read_path.exists():
-                print(f"  WARNING: {read_path} not found after ReadTableSpark")
+                print(f"  WARNING: {read_path} not found")
                 continue
             read_metrics = load_json(read_path)
 
-            experiments.append((mode, size_label, write_metrics, read_metrics))
+            experiments.append((mode, exp_id, write_metrics, read_metrics))
 
     if not experiments:
-        print("No experiments collected. Ensure write-metrics.json and read-metrics.json are produced.")
+        print("No experiments collected.")
         sys.exit(1)
 
-    results = build_results(experiments, dataset_labels)
-
-    # Validate: manifestSkipped + bloomFilterSkipped + readDataFiles == total per experiment
-    for mode, size_label, w, r in experiments:
-        total = w.get("totalDataFiles")
-        manifest_skipped = r.get("manifestSkippedDataFiles") or 0
-        bloom_skipped = r.get("bloomFilterSkippedDataFiles") or 0
-        read_data_files = (total or 0) - manifest_skipped - bloom_skipped
-        if total is not None and (read_data_files < 0 or read_data_files + manifest_skipped + bloom_skipped != total):
-            raise ValueError(
-                f"Validation failed for {mode}/{size_label}: "
-                f"readDataFiles ({read_data_files}) + manifestSkipped ({manifest_skipped}) + bloomFilterSkipped ({bloom_skipped}) != totalDataFiles ({total})"
-            )
+    results = build_results(experiments)
     GRAPHING.mkdir(parents=True, exist_ok=True)
     with OUTPUT_JSON.open("w") as f:
         json.dump(results, f, indent=2)
 
     print(f"\nWrote {len(experiments)} experiment(s) to {OUTPUT_JSON}")
-    print("Run graphing scripts from repo root: python graphing_scripts/plot_all.ipynb")
+    print("Run: python3 graphing_scripts/utils.py")
 
 
 if __name__ == "__main__":

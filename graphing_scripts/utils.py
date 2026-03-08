@@ -86,11 +86,38 @@ def save(fig, out_dir: str, name: str, display_inline: bool = False, dataset_siz
     plt.close(fig)
 
 
+def _experiment_list(data: dict) -> list:
+    """Return list of experiment/dataset identifiers."""
+    return data.get("experiments") or data.get("dataset_sizes", [])
+
+
+def filter_data_by_experiment(data: dict, experiment_id: str) -> dict:
+    """Return a copy of data filtered to a single experiment."""
+    experiments = _experiment_list(data)
+    if experiment_id not in experiments:
+        raise ValueError(f"Unknown experiment: {experiment_id}. Available: {experiments}")
+    idx = experiments.index(experiment_id)
+    filtered = {
+        "experiments": [experiment_id],
+        "dataset_sizes": [experiment_id],
+        "pruning_read": {k: [v[idx]] for k, v in data["pruning_read"].items()},
+        "disk_storage_bytes": {k: [v[idx]] for k, v in data["disk_storage_bytes"].items()},
+        "memory_read_mb": {k: [v[idx]] for k, v in data["memory_read_mb"].items()},
+        "memory_write_mb": {k: [v[idx]] for k, v in data["memory_write_mb"].items()},
+        "time_read_ms": {k: [v[idx]] for k, v in data["time_read_ms"].items()},
+        "time_write_ms": {k: [v[idx]] for k, v in data["time_write_ms"].items()},
+    }
+    if "experiment_metadata" in data:
+        filtered["experiment_metadata"] = data["experiment_metadata"]
+    return filtered
+
+
 def filter_data_by_size(data: dict, size: str) -> dict:
-    """Return a copy of data filtered to a single dataset size."""
-    if size not in data["dataset_sizes"]:
-        raise ValueError(f"Unknown dataset size: {size}. Available: {data['dataset_sizes']}")
-    idx = data["dataset_sizes"].index(size)
+    """Return a copy of data filtered to a single dataset size (legacy)."""
+    experiments = _experiment_list(data)
+    if size not in experiments:
+        raise ValueError(f"Unknown size: {size}. Available: {experiments}")
+    idx = experiments.index(size)
     filtered = {
         "dataset_sizes": [size],
         "pruning_read": {k: [v[idx]] for k, v in data["pruning_read"].items()},
@@ -454,21 +481,21 @@ def plot_all_grid(data: dict, out_dir: str, display_inline: bool = False, datase
     fig = plt.figure(figsize=(14, 17))
     gs = GridSpec(4, 2, figure=fig, hspace=0.4, wspace=0.3)
 
-    # Row 4 (top): experiment metadata header (from CreateTableSpark/ReadTableSpark metrics)
+    # Row 4 (top): experiment metadata header
     meta = data.get("experiment_metadata", {})
-    wq = meta.get("write_query")
-    write_q = (wq.get(dataset_size, "") if dataset_size else "") if isinstance(wq, dict) else (wq or "—")
-    if not write_q:
-        write_q = "—"
-    rq = meta.get("read_query")
-    read_q = (rq.get(dataset_size, "") if dataset_size else "") if isinstance(rq, dict) else (rq or "—")
-    if not read_q:
-        read_q = "—"
-    dataset_cfg = ""
-    if dataset_size and meta.get("dataset_config"):
-        dataset_cfg = meta["dataset_config"].get(dataset_size, "")
+    if dataset_size and isinstance(meta.get(dataset_size), dict):
+        exp_meta = meta[dataset_size]
+        write_q = exp_meta.get("write_query") or "—"
+        read_q = exp_meta.get("read_query") or "—"
+        dataset_cfg = exp_meta.get("dataset_config") or ""
+    else:
+        wq = meta.get("write_query")
+        write_q = (wq.get(dataset_size, "") if dataset_size and isinstance(wq, dict) else (wq or "—")) or "—"
+        rq = meta.get("read_query")
+        read_q = (rq.get(dataset_size, "") if dataset_size and isinstance(rq, dict) else (rq or "—")) or "—"
+        dataset_cfg = meta.get("dataset_config", {}).get(dataset_size, "") if dataset_size else ""
     header_text = (
-        # f"Write: {write_q}\n"  # turned off bc very big
+        f"Write: {write_q}\n"
         f"Read:  {read_q}\n"
         f"Dataset ({dataset_size or 'all'}): {dataset_cfg or '—'}"
     )
@@ -509,20 +536,20 @@ def main():
         data = json.load(f)
 
     os.makedirs(args.out, exist_ok=True)
-    sizes = data["dataset_sizes"]
+    experiments = _experiment_list(data)
 
-    # Generate separate plot sets for each dataset size
-    for size in sizes:
-        print(f"\nGenerating graphs for '{size}' dataset → {args.out}/")
-        filtered = filter_data_by_size(data, size)
-        plot_pruning_read_row_groups(filtered, args.out, dataset_size=size)
-        plot_pruning_read_datafiles(filtered, args.out, dataset_size=size)
-        plot_disk_storage(filtered, args.out, dataset_size=size)
-        plot_memory_read(filtered, args.out, dataset_size=size)
-        plot_memory_write(filtered, args.out, dataset_size=size)
-        plot_time_read(filtered, args.out, dataset_size=size)
-        plot_time_write(filtered, args.out, dataset_size=size)
-        plot_all_grid(filtered, args.out, dataset_size=size)
+    # Generate separate plot figures for each experiment
+    for exp_id in experiments:
+        print(f"\nGenerating graphs for '{exp_id}' → {args.out}/")
+        filtered = filter_data_by_experiment(data, exp_id)
+        plot_pruning_read_row_groups(filtered, args.out, dataset_size=exp_id)
+        plot_pruning_read_datafiles(filtered, args.out, dataset_size=exp_id)
+        plot_disk_storage(filtered, args.out, dataset_size=exp_id)
+        plot_memory_read(filtered, args.out, dataset_size=exp_id)
+        plot_memory_write(filtered, args.out, dataset_size=exp_id)
+        plot_time_read(filtered, args.out, dataset_size=exp_id)
+        plot_time_write(filtered, args.out, dataset_size=exp_id)
+        plot_all_grid(filtered, args.out, dataset_size=exp_id)
 
     print("\nDone.")
 

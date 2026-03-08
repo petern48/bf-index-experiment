@@ -34,6 +34,9 @@ task runReadTable(type: JavaExec) {
   classpath = sourceSets.main.runtimeClasspath
   mainClass = 'org.apache.iceberg.dev.ReadTableSpark'
   jvmArgs += rootProject.ext.extraJvmArgs
+  if (project.hasProperty("runArgs")) {
+    args project.runArgs.split(",").collect { it.trim() }
+  }
 }
 
 String scalaVersion = '2.13'

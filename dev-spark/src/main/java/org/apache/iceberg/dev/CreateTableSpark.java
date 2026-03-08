@@ -26,13 +26,9 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
 import java.nio.file.Paths;
-import org.apache.iceberg.DataFile;
 import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.io.CloseableIterable;
-import org.apache.spark.sql.Dataset;
-import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
-import static org.apache.spark.sql.functions.*;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.actions.ComputeTableStats;
 import org.apache.iceberg.spark.Spark3Util;
@@ -42,89 +38,85 @@ import org.apache.iceberg.dev.MemoryTracker;
 import org.apache.iceberg.dev.WriteMetrics;
 
 /**
- * Spark equivalent of CreateTable.java - creates Iceberg tables locally using Spark APIs with a
- * Hadoop catalog, writes data, enables bloom filters, and computes NDV statistics.
- *
- * <p>Run with: ./gradlew :iceberg-dev-spark:run
- * <p>Optional args: [bloom_mode] [num_files] [records_per_file]
- *   - bloom_mode: one of "none", "row_group", "file_level" (default: "file_level")
- *   - num_files: number of data files to create (default: 10)
- *   - records_per_file: rows per file (default: 100000)
- *
- * <p>Example for larger dataset: ./gradlew run -PrunArgs="file_level,50,500000"
- *   Creates 50 files with 500K rows each = 25M total rows
- *
- * <p>Requires Spark 4.0 or 4.1 to be in the build (default: 4.1). Tables are stored under
- * ./build/warehouse by default. Use ICEBERG_WAREHOUSE env var to override.
+ * Creates Iceberg tables from SQL experiments (high/medium cardinality) with configurable bloom
+ * filters. Run with: ./gradlew :iceberg-dev-spark:run
+ * <p>Args: [bloom_mode] [experiment_id]
+ *   - bloom_mode: "none", "row_group", "file_level"
+ *   - experiment_id: "high_cardinality" or "medium_cardinality"
  */
 public class CreateTableSpark {
 
-  /** Bloom mode: none, row_group (Parquet only), file_level (Parquet + Puffin file-level). */
+  private static final long ROW_GROUP_SIZE_BYTES = 1024L * 1024;
+
   public static String bloomModeFromArgs(String[] args) {
     if (args == null || args.length == 0) {
       return "file_level";
     }
-    String mode = args[0].trim().toLowerCase(Locale.ROOT);
-    return mode.isEmpty() ? "file_level" : mode;
+    return args[0].trim().toLowerCase(Locale.ROOT);
   }
 
-  /** Number of data files to create. */
-  public static int numFilesFromArgs(String[] args) {
+  public static String experimentIdFromArgs(String[] args) {
     if (args == null || args.length < 2) {
-      return 10;
+      return "high_cardinality";
     }
-    try {
-      return Integer.parseInt(args[1].trim());
-    } catch (NumberFormatException e) {
-      return 10;
-    }
+    return args[1].trim().toLowerCase(Locale.ROOT);
   }
 
-  /** Number of records per file. */
-  public static int recordsPerFileFromArgs(String[] args) {
-    if (args == null || args.length < 3) {
-      return 100_000;
-    }
-    try {
-      return Integer.parseInt(args[2].trim());
-    } catch (NumberFormatException e) {
-      return 100_000;
-    }
-  }
-
-  /** Parquet row group size (1 MiB) so we get many row groups per file for meaningful row-group BF charts. */
-  private static final long ROW_GROUP_SIZE_BYTES = 1024L * 1024;
-
-  /** TBLPROPERTIES fragment for CREATE TABLE (no leading/trailing comma). */
-  public static String tblPropertiesForBloomMode(String bloomMode) {
+  /** TBLPROPERTIES for bloom filters. Columns vary by experiment. */
+  private static String tblPropertiesForExperiment(String bloomMode, String experimentId) {
     String rowGroupProp =
         "'write.parquet.row-group-size-bytes'='" + ROW_GROUP_SIZE_BYTES + "'";
     switch (bloomMode) {
       case "none":
         return "TBLPROPERTIES (" + rowGroupProp + ")";
       case "row_group":
-        return "TBLPROPERTIES ("
-            + rowGroupProp + ","
-            + "'write.parquet.bloom-filter-enabled.column.id'='true',"
-            + "'write.parquet.bloom-filter-enabled.column.data'='true'"
-            + ")";
+        if ("high_cardinality".equals(experimentId)) {
+          return "TBLPROPERTIES ("
+              + rowGroupProp + ","
+              + "'write.parquet.bloom-filter-enabled.column.id'='true',"
+              + "'write.parquet.bloom-filter-enabled.column.user_id'='true',"
+              + "'write.parquet.bloom-filter-enabled.column.payload'='true'"
+              + ")";
+        } else {
+          return "TBLPROPERTIES ("
+              + rowGroupProp + ","
+              + "'write.parquet.bloom-filter-enabled.column.id'='true',"
+              + "'write.parquet.bloom-filter-enabled.column.device_id'='true',"
+              + "'write.parquet.bloom-filter-enabled.column.tenant_id'='true',"
+              + "'write.parquet.bloom-filter-enabled.column.payload'='true'"
+              + ")";
+        }
       case "file_level":
       default:
-        // Enable both row group-level and file-level bloom filters
-        return "TBLPROPERTIES ("
-            + rowGroupProp + ","
-            + "'write.parquet.bloom-filter-enabled.column.id'='true',"
-            + "'write.parquet.bloom-filter-enabled.column.data'='true',"
-            + "'write.puffin.bloom-filter-enabled.column.id'='true',"
-            + "'write.puffin.bloom-filter-enabled.column.data'='true'"
-            + ")";
+        if ("high_cardinality".equals(experimentId)) {
+          return "TBLPROPERTIES ("
+              + rowGroupProp + ","
+              + "'write.parquet.bloom-filter-enabled.column.id'='true',"
+              + "'write.parquet.bloom-filter-enabled.column.user_id'='true',"
+              + "'write.parquet.bloom-filter-enabled.column.payload'='true',"
+              + "'write.puffin.bloom-filter-enabled.column.id'='true',"
+              + "'write.puffin.bloom-filter-enabled.column.user_id'='true',"
+              + "'write.puffin.bloom-filter-enabled.column.payload'='true'"
+              + ")";
+        } else {
+          return "TBLPROPERTIES ("
+              + rowGroupProp + ","
+              + "'write.parquet.bloom-filter-enabled.column.id'='true',"
+              + "'write.parquet.bloom-filter-enabled.column.device_id'='true',"
+              + "'write.parquet.bloom-filter-enabled.column.tenant_id'='true',"
+              + "'write.parquet.bloom-filter-enabled.column.payload'='true',"
+              + "'write.puffin.bloom-filter-enabled.column.id'='true',"
+              + "'write.puffin.bloom-filter-enabled.column.device_id'='true',"
+              + "'write.puffin.bloom-filter-enabled.column.tenant_id'='true',"
+              + "'write.puffin.bloom-filter-enabled.column.payload'='true'"
+              + ")";
+        }
     }
   }
 
   public static void main(String[] args) throws Exception {
     String bloomMode = bloomModeFromArgs(args);
-    int numDataFiles = numFilesFromArgs(args);
-    int recordsPerFile = recordsPerFileFromArgs(args);
+    String experimentId = experimentIdFromArgs(args);
 
     String warehouse =
         System.getenv("ICEBERG_WAREHOUSE") != null
@@ -142,123 +134,80 @@ public class CreateTableSpark {
             .getOrCreate();
 
     spark.sparkContext().setLogLevel("ERROR");
-
-    // Spark's Iceberg write path may ignore the table property; set Hadoop config so writers can use it.
     spark.sparkContext().hadoopConfiguration().set(
         "write.parquet.row-group-size-bytes", String.valueOf(ROW_GROUP_SIZE_BYTES));
 
-    String tableName = "local.default.sample_table_spark";
-
     spark.sql("USE local");
     spark.sql("CREATE NAMESPACE IF NOT EXISTS default");
-    spark.sql("DROP TABLE IF EXISTS " + tableName);
 
-    String tblProps = tblPropertiesForBloomMode(bloomMode);
-    String createSql =
-        "CREATE TABLE "
-            + tableName
-            + " (id BIGINT, data STRING, created_at TIMESTAMP) "
-            + "USING iceberg "
-            + (tblProps.isEmpty() ? "" : " " + tblProps);
-    spark.sql(createSql);
+    String writeQuery;
+    String tableName;
+    long totalRecords;
 
-    System.out.println("Created table: " + tableName);
-    System.out.println("Bloom mode: " + bloomMode);
-    System.out.println("Configuration: " + numDataFiles + " files x " + recordsPerFile + " rows/file");
+    float writeDataMaxMemory = 0;
+    float writeDataDuration = 0;
 
-    // Sequential ID per file + uncorrelated data (fair benchmark for bloom filters).
-    // - Sequential IDs: file k has ids [k*R, (k+1)*R), so min/max can prune on id.
-    // - Uncorrelated data: data = "item_" + (id * 7919 % 10000000), so string values are spread
-    //   across files and min/max on data rarely help; bloom filters are the main win for string filters.
-    long totalRecords = (long) numDataFiles * recordsPerFile;
-    final long dataHashMod = 10_000_000L;
-    final int dataHashMultiplier = 7919;
+    if ("high_cardinality".equals(experimentId)) {
+      tableName = "local.default.users_random";
+      writeQuery =
+          "CREATE TABLE users_random AS SELECT id, uuid() AS user_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(100000000)";
+      totalRecords = 100_000_000L;
 
-    System.out.println("Generating " + totalRecords + " records across " + numDataFiles + " files...");
-    System.out.println("Estimated total data size: ~" + (totalRecords * 25 / 1_000_000) + " MB (before compression)");
-    System.out.println("Sequential ID per file + uncorrelated data (fair benchmark):");
-    System.out.println("  File 0: IDs [0, " + recordsPerFile + "), file 1: [" + recordsPerFile + ", " + (2 * recordsPerFile) + "), ...");
-    System.out.println("  data = 'item_' + (id * " + dataHashMultiplier + " % " + dataHashMod + ") -> min/max on data rarely prune");
+      spark.sql("DROP TABLE IF EXISTS " + tableName);
+      String tblProps = tblPropertiesForExperiment(bloomMode, experimentId);
+      String createSql =
+          "CREATE TABLE "
+              + tableName
+              + " USING iceberg "
+              + tblProps
+              + " AS SELECT id, uuid() AS user_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(100000000)";
+      System.out.println("Running: " + createSql);
+      MemoryTracker.Result dataResult = MemoryTracker.track(() -> spark.sql(createSql));
+      writeDataMaxMemory = (float) dataResult.peakMemoryMB();
+      writeDataDuration = (float) dataResult.durationMs();
+      System.out.println("Write: " + dataResult);
+    } else {
+      tableName = "local.default.events_medium_cardinality";
+      writeQuery =
+          "CREATE TABLE events_medium_cardinality AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(200000000)";
+      totalRecords = 200_000_000L;
 
-    Dataset<Row> df =
-        spark.range(totalRecords)
-            .withColumn(
-                "data",
-                concat(
-                    lit("item_"),
-                    expr("cast((id * " + dataHashMultiplier + " % " + dataHashMod + ") as string)")))
-            .withColumn(
-                "created_at",
-                expr("timestampadd(SECOND, id, timestamp('2024-01-15T10:00:00Z'))"))
-            .repartition(numDataFiles, expr("id / " + recordsPerFile))
-            .sortWithinPartitions("id");
-
-
-    // Phase 1: data file write — single Spark job, no extra work
-    MemoryTracker.Result datafileResult =
-        MemoryTracker.track(
-            () -> {
-              try {
-                df.writeTo(tableName).append();
-              } catch (Exception e) {
-                throw new RuntimeException(e);
-              }
-            });
-    float writeDataMaxMemory = (float) datafileResult.peakMemoryMB();
-    float writeDataDuration = (float) datafileResult.durationMs();
-    System.out.println("Data file write: " + datafileResult);
-
-    System.out.println(
-        "Wrote " + totalRecords + " records in " + numDataFiles + " data files (sequential ID per file)");
+      spark.sql("DROP TABLE IF EXISTS " + tableName);
+      String tblProps = tblPropertiesForExperiment(bloomMode, experimentId);
+      String createSql =
+          "CREATE TABLE "
+              + tableName
+              + " USING iceberg "
+              + tblProps
+              + " AS SELECT id, cast(rand()*1000000 as int) AS device_id, cast(rand()*1000 as int) AS tenant_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(200000000)";
+      System.out.println("Running: " + createSql);
+      MemoryTracker.Result dataResult = MemoryTracker.track(() -> spark.sql(createSql));
+      writeDataMaxMemory = (float) dataResult.peakMemoryMB();
+      writeDataDuration = (float) dataResult.durationMs();
+      System.out.println("Write: " + dataResult);
+    }
 
     Table table = Spark3Util.loadIcebergTable(spark, tableName);
     table.refresh();
 
-    // Phase 2: puffin file write (ComputeTableStats) — no extra work
-    // Metrics default to zero for non-file_level bloom modes
     float writePuffinMaxMemory = 0;
     float writePuffinDuration = 0;
     long puffinDiskSizeInBytes = 0;
     long puffinFooterSizeInBytes = 0;
 
     if (bloomMode.equals("file_level")) {
-        MemoryTracker.TrackedResult<ComputeTableStats.Result> puffinTracked =
-            MemoryTracker.trackWithResult(
-                () ->
-                    SparkActions.get()
-                        .computeTableStats(table)
-                        .columns("id", "data")
-                        .execute());
-    
-        System.out.println("Puffin write: " + puffinTracked.metrics());
-
-        ComputeTableStats.Result result = puffinTracked.value();
-
-        // Save metrics
-        writePuffinMaxMemory = (float) puffinTracked.metrics().peakMemoryMB();
-        writePuffinDuration = (float) puffinTracked.metrics().durationMs();
-        puffinDiskSizeInBytes = result.statisticsFile().fileSizeInBytes();
-        puffinFooterSizeInBytes = result.statisticsFile().fileFooterSizeInBytes();
-
-        long ndvBlobs = result.statisticsFile().blobMetadata().stream()
-            .filter(m -> m.properties().containsKey("ndv"))
-            .count();
-        long bloomBlobs = result.statisticsFile().blobMetadata().stream()
-            .filter(m -> m.properties().containsKey("data-file-path"))
-            .count();
-        System.out.println("Puffin stats file: " + result.statisticsFile().path());
-        System.out.println("  NDV blobs:               " + ndvBlobs);
-        System.out.println("  File bloom filter blobs: " + bloomBlobs);
-        if (bloomBlobs > 0) {
-        System.out.println("  Sample bloom filter files:");
-        result.statisticsFile().blobMetadata().stream()
-            .filter(m -> m.properties().containsKey("data-file-path"))
-            .limit(3)
-            .forEach(m -> System.out.println("    " + m.properties().get("data-file-path")));
-        }
+      String[] bloomCols = "high_cardinality".equals(experimentId)
+          ? new String[]{"id", "user_id", "payload"}
+          : new String[]{"id", "device_id", "tenant_id", "payload"};
+      MemoryTracker.TrackedResult<ComputeTableStats.Result> puffinTracked =
+          MemoryTracker.trackWithResult(
+              () -> SparkActions.get().computeTableStats(table).columns(bloomCols).execute());
+      writePuffinMaxMemory = (float) puffinTracked.metrics().peakMemoryMB();
+      writePuffinDuration = (float) puffinTracked.metrics().durationMs();
+      puffinDiskSizeInBytes = puffinTracked.value().statisticsFile().fileSizeInBytes();
+      puffinFooterSizeInBytes = puffinTracked.value().statisticsFile().fileFooterSizeInBytes();
     }
 
-    // Count data files, row groups, and total data file disk size from manifest metadata (no file I/O)
     int actualDataFiles = 0;
     int totalRowGroups = 0;
     long totalDataFileSizeBytes = 0;
@@ -273,31 +222,14 @@ public class CreateTableSpark {
       }
     }
 
-    // Sum manifest file sizes from snapshot metadata (no file I/O beyond manifest listing)
     long totalManifestSizeBytes = 0;
     for (org.apache.iceberg.ManifestFile manifest : table.currentSnapshot().allManifests(table.io())) {
       totalManifestSizeBytes += manifest.length();
     }
 
-    System.out.println("Table stats: " + actualDataFiles + " data files, " + totalRowGroups + " row groups");
-    System.out.println("  Data file disk size: " + totalDataFileSizeBytes + " bytes");
-    System.out.println("  Manifest disk size:  " + totalManifestSizeBytes + " bytes");
-
-    // Assertions for validation (linters complain if we use assert statements)
-    if (totalRowGroups <= 0) { throw new IllegalStateException("Total row groups (" + totalRowGroups + ") is 0"); }
-    // NOTE: this doesn't actually set the exact number of datafiles we specified any more after changing to purely a spark query
-    // if (actualDataFiles != numDataFiles) { throw new IllegalStateException("Actual data files (" + actualDataFiles + ") != expected data files (" + numDataFiles + ")"); }
     WriteMetrics metrics = new WriteMetrics();
-    metrics.writeQuery =
-        "spark.range("
-            + totalRecords
-            + ").withColumn(\"data\", concat(lit(\"item_\"), cast((id * "
-            + dataHashMultiplier
-            + " % "
-            + dataHashMod
-            + ") as string))).withColumn(\"created_at\", timestampadd(SECOND, id, timestamp('2024-01-15T10:00:00Z'))).repartition(numFiles, id/recordsPerFile).sortWithinPartitions(\"id\"); df.writeTo(table).append()";
+    metrics.writeQuery = writeQuery;
     metrics.totalRecords = totalRecords;
-
     metrics.totalDataFiles = actualDataFiles;
     metrics.totalRowGroups = totalRowGroups;
     metrics.dataFileDiskSizeInBytes = totalDataFileSizeBytes;
@@ -308,19 +240,16 @@ public class CreateTableSpark {
     metrics.writePuffinMaxMemory = writePuffinMaxMemory;
     metrics.writeDataDuration = writeDataDuration;
     metrics.writePuffinDuration = writePuffinDuration;
-    metrics.maxMemoryUsage =
-        Math.max(writeDataMaxMemory, writePuffinMaxMemory);
+    metrics.maxMemoryUsage = Math.max(writeDataMaxMemory, writePuffinMaxMemory);
 
     exportWriteMetrics(metrics);
-
     spark.stop();
   }
 
   private static void exportWriteMetrics(WriteMetrics metrics) throws IOException {
     ObjectMapper mapper = new ObjectMapper();
     mapper.enable(SerializationFeature.INDENT_OUTPUT);
-    String outputPath = "write-metrics.json";
-    mapper.writeValue(Paths.get(outputPath).toFile(), metrics);
-    System.out.println("Write metrics exported to " + outputPath);
+    mapper.writeValue(Paths.get("write-metrics.json").toFile(), metrics);
+    System.out.println("Write metrics exported to write-metrics.json");
   }
 }
