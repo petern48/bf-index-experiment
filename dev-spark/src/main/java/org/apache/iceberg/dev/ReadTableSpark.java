@@ -139,12 +139,6 @@ public class ReadTableSpark {
     metrics.bloomFilterSkippedDataFiles = getIntMetric(scanMetrics, "bloomFilterSkippedDataFiles");
     metrics.rowGroupsSkippedByFileBloomFilter = getIntMetric(scanMetrics, "rowGroupsSkippedByFileBloomFilter");
     metrics.rowGroupsRead = getIntMetric(scanMetrics, "rowGroupsRead");
-    metrics.totalRowGroups = getIntMetric(scanMetrics, "totalRowGroups");
-    metrics.totalScanDataFiles = getIntMetric(scanMetrics, "totalScanDataFiles");
-    metrics.resultDataFiles = getIntMetric(scanMetrics, "resultDataFiles");
-    metrics.totalDataFileSizeBytes = scanMetrics.get("totalDataFileSize");
-    metrics.puffinStatsFileSizeBytes = scanMetrics.get("puffinStatsFileSizeInBytes");
-    metrics.puffinStatsFooterSizeBytes = scanMetrics.get("puffinStatsFooterSizeInBytes");
     metrics.maxMemoryUsage = (float) tracked.metrics().peakMemoryMB();
     metrics.totalReadDuration = (float) tracked.metrics().durationMs();
     Long puffinMaxMem = scanMetrics.get("puffinReadMaxMemory");

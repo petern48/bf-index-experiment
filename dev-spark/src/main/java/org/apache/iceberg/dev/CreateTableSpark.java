@@ -137,7 +137,6 @@ public class CreateTableSpark {
 
     String writeQuery;
     String tableName;
-    long totalRecords;
 
     float writeDataMaxMemory = 0;
     float writeDataDuration = 0;
@@ -146,8 +145,6 @@ public class CreateTableSpark {
       tableName = "local.default.users_random";
       writeQuery =
           "CREATE TABLE users_random AS SELECT id, uuid() AS user_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(100000000) DISTRIBUTE BY (id % " + NUM_DATA_FILES + ")";
-      totalRecords = 100_000_000L;
-
       spark.sql("DROP TABLE IF EXISTS " + tableName);
       String tblProps = tblPropertiesForExperiment(bloomMode, experimentId);
       String createSql =
@@ -165,8 +162,6 @@ public class CreateTableSpark {
       tableName = "local.default.events_medium_cardinality";
       writeQuery =
           "CREATE TABLE events_medium_cardinality USING iceberg PARTITIONED BY (truncate(2000000, id)) AS SELECT id, cast(rand()*4000000 as int) AS rand_id, substr(md5(cast(rand() as string)),1,20) AS rand_str FROM range(200000000)";
-      totalRecords = 200_000_000L;
-
       spark.sql("DROP TABLE IF EXISTS " + tableName);
       String tblProps = tblPropertiesForExperiment(bloomMode, experimentId);
       String createSql =
@@ -189,7 +184,6 @@ public class CreateTableSpark {
     float writePuffinMaxMemory = 0;
     float writePuffinDuration = 0;
     long puffinDiskSizeInBytes = 0;
-    long puffinFooterSizeInBytes = 0;
 
     if (bloomMode.equals("file_level")) {
       String[] bloomCols = "high_cardinality".equals(experimentId)
@@ -201,7 +195,6 @@ public class CreateTableSpark {
       writePuffinMaxMemory = (float) puffinTracked.metrics().peakMemoryMB();
       writePuffinDuration = (float) puffinTracked.metrics().durationMs();
       puffinDiskSizeInBytes = puffinTracked.value().statisticsFile().fileSizeInBytes();
-      puffinFooterSizeInBytes = puffinTracked.value().statisticsFile().fileFooterSizeInBytes();
     }
 
     int actualDataFiles = 0;
@@ -225,18 +218,15 @@ public class CreateTableSpark {
 
     WriteMetrics metrics = new WriteMetrics();
     metrics.writeQuery = writeQuery;
-    metrics.totalRecords = totalRecords;
     metrics.totalDataFiles = actualDataFiles;
     metrics.totalRowGroups = totalRowGroups;
     metrics.dataFileDiskSizeInBytes = totalDataFileSizeBytes;
     metrics.manifestDiskSizeInBytes = totalManifestSizeBytes;
     metrics.puffinDiskSizeInBytes = puffinDiskSizeInBytes;
-    metrics.puffinFooterSizeInBytes = puffinFooterSizeInBytes;
     metrics.writeDataMaxMemory = writeDataMaxMemory;
     metrics.writePuffinMaxMemory = writePuffinMaxMemory;
     metrics.writeDataDuration = writeDataDuration;
     metrics.writePuffinDuration = writePuffinDuration;
-    metrics.maxMemoryUsage = Math.max(writeDataMaxMemory, writePuffinMaxMemory);
 
     exportWriteMetrics(metrics);
     spark.stop();

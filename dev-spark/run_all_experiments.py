@@ -131,7 +131,6 @@ def build_results(
                 "total_data_files": _int(w.get("totalDataFiles")),
                 "manifest_skipped_data_files": _int(r.get("manifestSkippedDataFiles")),
                 "bloom_filter_skipped_data_files": _int(r.get("bloomFilterSkippedDataFiles")),
-                "result_data_files": _int(r.get("resultDataFiles")),
             })
             disk_storage_bytes[key].append({
                 "puffin_bytes": _int(w.get("puffinDiskSizeInBytes")),
