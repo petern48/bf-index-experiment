@@ -90,9 +90,9 @@ public class CreateTableSpark {
         if ("high_cardinality".equals(experimentId)) {
           return "TBLPROPERTIES ("
               + rowGroupProp + ","
-              + "'write.parquet.bloom-filter-enabled.column.id'='true',"
-              + "'write.parquet.bloom-filter-enabled.column.user_id'='true',"
-              + "'write.parquet.bloom-filter-enabled.column.payload'='true',"
+              // + "'write.parquet.bloom-filter-enabled.column.id'='true',"
+              // + "'write.parquet.bloom-filter-enabled.column.user_id'='true',"
+              // + "'write.parquet.bloom-filter-enabled.column.payload'='true',"
               + "'write.puffin.bloom-filter-enabled.column.id'='true',"
               + "'write.puffin.bloom-filter-enabled.column.user_id'='true',"
               + "'write.puffin.bloom-filter-enabled.column.payload'='true'"
@@ -100,8 +100,8 @@ public class CreateTableSpark {
         } else {
           return "TBLPROPERTIES ("
               + rowGroupProp + ","
-              + "'write.parquet.bloom-filter-enabled.column.rand_id'='true',"
-              + "'write.parquet.bloom-filter-enabled.column.rand_str'='true',"
+              // + "'write.parquet.bloom-filter-enabled.column.rand_id'='true',"
+              // + "'write.parquet.bloom-filter-enabled.column.rand_str'='true',"
               + "'write.puffin.bloom-filter-enabled.column.rand_id'='true',"
               + "'write.puffin.bloom-filter-enabled.column.rand_str'='true'"
               + ")";
