@@ -29,14 +29,14 @@ BLOOM_MODES = ["none", "row_group", "file_level"]
 
 # (experiment_base, read_query_id) -> (write_query_display, read_query_display, dataset_config)
 EXPERIMENTS = [
-    (
-        "high_cardinality_in",
-        "high_cardinality",
-        "in",
-        "CREATE TABLE users_random AS SELECT id, uuid() AS user_id, substr(md5(rand()),1,20) AS payload FROM range(100000000)",
-        "SELECT * FROM users_random WHERE user_id IN ('uuid1','uuid2','uuid3')",
-        "100,000,000 records",
-    ),
+    # (
+    #     "high_cardinality_in",
+    #     "high_cardinality",
+    #     "in",
+    #     "CREATE TABLE users_random AS SELECT id, uuid() AS user_id, substr(md5(rand()),1,20) AS payload FROM range(100000000)",
+    #     "SELECT * FROM users_random WHERE user_id IN ('uuid1','uuid2','uuid3')",
+    #     "100,000,000 records",
+    # ),
     (
         "medium_cardinality_where",
         "medium_cardinality",
