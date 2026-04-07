@@ -1,0 +1,159 @@
+{
+  "experiments": [
+    "medium_cardinality_where"
+  ],
+  "experiment_metadata": {
+    "medium_cardinality_where": {
+      "write_query": "CREATE TABLE events_medium_cardinality USING iceberg PARTITIONED BY (truncate(2000000, id)) AS SELECT id, cast(rand()*4000000 as int) AS rand_id, substr(md5(cast(rand() as string)),1,20) AS rand_str FROM range(200000000)",
+      "read_query": "SELECT * FROM local.default.events_medium_cardinality WHERE rand_id = 123456 AND id BETWEEN 0 AND 169999999",
+      "dataset_config": "200,000,000 records"
+    }
+  },
+  "pruning_read": {
+    "no_bloom_filter": [
+      {
+        "total_row_groups": 3902,
+        "row_groups_read": 3316,
+        "skipped_row_groups": 0,
+        "row_groups_skipped_by_file_bloom_filter": 0,
+        "total_data_files": 100,
+        "manifest_skipped_data_files": 15,
+        "bloom_filter_skipped_data_files": 0,
+        "result_data_files": 85
+      }
+    ],
+    "row_group_bloom_filter": [
+      {
+        "total_row_groups": 3902,
+        "row_groups_read": 51,
+        "skipped_row_groups": 3266,
+        "row_groups_skipped_by_file_bloom_filter": 0,
+        "total_data_files": 100,
+        "manifest_skipped_data_files": 15,
+        "bloom_filter_skipped_data_files": 0,
+        "result_data_files": 85
+      }
+    ],
+    "file_level_bloom_filter": [
+      {
+        "total_row_groups": 3903,
+        "row_groups_read": 38,
+        "skipped_row_groups": 1173,
+        "row_groups_skipped_by_file_bloom_filter": 2107,
+        "total_data_files": 100,
+        "manifest_skipped_data_files": 15,
+        "bloom_filter_skipped_data_files": 54,
+        "result_data_files": 85
+      }
+    ]
+  },
+  "disk_storage_bytes": {
+    "no_bloom_filter": [
+      {
+        "puffin_bytes": 0,
+        "data_bytes": 3227154647,
+        "manifest_overhead_bytes": 27911
+      }
+    ],
+    "row_group_bloom_filter": [
+      {
+        "puffin_bytes": 0,
+        "data_bytes": 11410482330,
+        "manifest_overhead_bytes": 27853
+      }
+    ],
+    "file_level_bloom_filter": [
+      {
+        "puffin_bytes": 207595262,
+        "data_bytes": 11412514095,
+        "manifest_overhead_bytes": 27796
+      }
+    ]
+  },
+  "memory_read_mb": {
+    "no_bloom_filter": [
+      {
+        "max_mb": 952.6057,
+        "puffin_mb": 0
+      }
+    ],
+    "row_group_bloom_filter": [
+      {
+        "max_mb": 710.4306,
+        "puffin_mb": 0
+      }
+    ],
+    "file_level_bloom_filter": [
+      {
+        "max_mb": 612.0712,
+        "puffin_mb": 325.083
+      }
+    ]
+  },
+  "memory_write_mb": {
+    "no_bloom_filter": [
+      {
+        "data_mb": 1042.4691,
+        "puffin_mb": 0.0
+      }
+    ],
+    "row_group_bloom_filter": [
+      {
+        "data_mb": 3015.8962,
+        "puffin_mb": 0.0
+      }
+    ],
+    "file_level_bloom_filter": [
+      {
+        "data_mb": 3310.7375,
+        "puffin_mb": 2924.6821
+      }
+    ]
+  },
+  "time_read_ms": {
+    "no_bloom_filter": [
+      {
+        "total_ms": 11567,
+        "puffin_ms": 0.0
+      }
+    ],
+    "row_group_bloom_filter": [
+      {
+        "total_ms": 6205,
+        "puffin_ms": 0.0
+      }
+    ],
+    "file_level_bloom_filter": [
+      {
+        "total_ms": 4905,
+        "puffin_ms": 447.0
+      }
+    ]
+  },
+  "time_write_ms": {
+    "no_bloom_filter": [
+      {
+        "metadata_ms": 0,
+        "puffin_ms": 0.0,
+        "data_ms": 162890.39,
+        "total_ms": 162890
+      }
+    ],
+    "row_group_bloom_filter": [
+      {
+        "metadata_ms": 0,
+        "puffin_ms": 0.0,
+        "data_ms": 190687.75,
+        "total_ms": 190688
+      }
+    ],
+    "file_level_bloom_filter": [
+      {
+        "metadata_ms": 0,
+        "puffin_ms": 101600.61,
+        "data_ms": 185663.95,
+        "total_ms": 287265
+      }
+    ]
+  }
+}

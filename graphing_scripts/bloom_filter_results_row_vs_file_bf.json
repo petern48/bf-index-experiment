@@ -1,0 +1,258 @@
+{
+  "experiments": [
+    "high_cardinality_in",
+    "medium_cardinality_where"
+  ],
+  "experiment_metadata": {
+    "high_cardinality_in": {
+      "write_query": "CREATE TABLE users_random AS SELECT id, uuid() AS user_id, substr(md5(cast(rand() as string)),1,20) AS payload FROM range(100000000) DISTRIBUTE BY (id % 100)",
+      "read_query": "SELECT * FROM local.default.users_random WHERE user_id IN ('77e762af-4d32-418c-9e98-da2e7b215a35','568ca50f-1e0a-4c7a-994f-06cc5bc6c230','1aa3d796-f1de-4556-a381-e465be7a2396')",
+      "dataset_config": "100,000,000 records"
+    },
+    "medium_cardinality_where": {
+      "write_query": "CREATE TABLE events_medium_cardinality USING iceberg PARTITIONED BY (truncate(2000000, id)) AS SELECT id, cast(rand()*4000000 as int) AS rand_id, substr(md5(cast(rand() as string)),1,20) AS rand_str FROM range(200000000)",
+      "read_query": "SELECT * FROM local.default.events_medium_cardinality WHERE rand_id = 123456 AND id BETWEEN 0 AND 169999999",
+      "dataset_config": "200,000,000 records"
+    }
+  },
+  "pruning_read": {
+    "no_bloom_filter": [
+      {
+        "total_row_groups": 6874,
+        "row_groups_read": 6874,
+        "skipped_row_groups": 0,
+        "row_groups_skipped_by_file_bloom_filter": 0,
+        "total_data_files": 74,
+        "manifest_skipped_data_files": 0,
+        "bloom_filter_skipped_data_files": 0
+      },
+      {
+        "total_row_groups": 3901,
+        "row_groups_read": 3316,
+        "skipped_row_groups": 0,
+        "row_groups_skipped_by_file_bloom_filter": 0,
+        "total_data_files": 100,
+        "manifest_skipped_data_files": 15,
+        "bloom_filter_skipped_data_files": 0
+      }
+    ],
+    "row_group_bloom_filter": [
+      {
+        "total_row_groups": 6874,
+        "row_groups_read": 1,
+        "skipped_row_groups": 6873,
+        "row_groups_skipped_by_file_bloom_filter": 0,
+        "total_data_files": 74,
+        "manifest_skipped_data_files": 0,
+        "bloom_filter_skipped_data_files": 0
+      },
+      {
+        "total_row_groups": 3901,
+        "row_groups_read": 50,
+        "skipped_row_groups": 3266,
+        "row_groups_skipped_by_file_bloom_filter": 0,
+        "total_data_files": 100,
+        "manifest_skipped_data_files": 15,
+        "bloom_filter_skipped_data_files": 0
+      }
+    ],
+    "file_level_bloom_filter": [
+      {
+        "total_row_groups": 6874,
+        "row_groups_read": 1850,
+        "skipped_row_groups": 0,
+        "row_groups_skipped_by_file_bloom_filter": 5024,
+        "total_data_files": 74,
+        "manifest_skipped_data_files": 0,
+        "bloom_filter_skipped_data_files": 60
+      },
+      {
+        "total_row_groups": 3903,
+        "row_groups_read": 1327,
+        "skipped_row_groups": 0,
+        "row_groups_skipped_by_file_bloom_filter": 1990,
+        "total_data_files": 100,
+        "manifest_skipped_data_files": 15,
+        "bloom_filter_skipped_data_files": 51
+      }
+    ]
+  },
+  "disk_storage_bytes": {
+    "no_bloom_filter": [
+      {
+        "puffin_bytes": 0,
+        "data_bytes": 3372498895,
+        "manifest_overhead_bytes": 38939
+      },
+      {
+        "puffin_bytes": 0,
+        "data_bytes": 3227117893,
+        "manifest_overhead_bytes": 27818
+      }
+    ],
+    "row_group_bloom_filter": [
+      {
+        "puffin_bytes": 0,
+        "data_bytes": 24996851387,
+        "manifest_overhead_bytes": 38934
+      },
+      {
+        "puffin_bytes": 0,
+        "data_bytes": 11408371329,
+        "manifest_overhead_bytes": 27851
+      }
+    ],
+    "file_level_bloom_filter": [
+      {
+        "puffin_bytes": 248476639,
+        "data_bytes": 3372505945,
+        "manifest_overhead_bytes": 38934
+      },
+      {
+        "puffin_bytes": 207599842,
+        "data_bytes": 3227114163,
+        "manifest_overhead_bytes": 27818
+      }
+    ]
+  },
+  "memory_read_mb": {
+    "no_bloom_filter": [
+      {
+        "max_mb": 761.19495,
+        "puffin_mb": 0
+      },
+      {
+        "max_mb": 792.61414,
+        "puffin_mb": 0
+      }
+    ],
+    "row_group_bloom_filter": [
+      {
+        "max_mb": 403.3975,
+        "puffin_mb": 0
+      },
+      {
+        "max_mb": 701.5549,
+        "puffin_mb": 0
+      }
+    ],
+    "file_level_bloom_filter": [
+      {
+        "max_mb": 783.0578,
+        "puffin_mb": 237.15137
+      },
+      {
+        "max_mb": 843.04456,
+        "puffin_mb": 313.56152
+      }
+    ]
+  },
+  "memory_write_mb": {
+    "no_bloom_filter": [
+      {
+        "data_mb": 460.6503,
+        "puffin_mb": 0.0
+      },
+      {
+        "data_mb": 1097.5029,
+        "puffin_mb": 0.0
+      }
+    ],
+    "row_group_bloom_filter": [
+      {
+        "data_mb": 5985.9165,
+        "puffin_mb": 0.0
+      },
+      {
+        "data_mb": 3242.92,
+        "puffin_mb": 0.0
+      }
+    ],
+    "file_level_bloom_filter": [
+      {
+        "data_mb": 467.78772,
+        "puffin_mb": 1530.9259
+      },
+      {
+        "data_mb": 1101.1011,
+        "puffin_mb": 1353.1943
+      }
+    ]
+  },
+  "time_read_ms": {
+    "no_bloom_filter": [
+      {
+        "total_ms": 13460,
+        "puffin_ms": 0.0
+      },
+      {
+        "total_ms": 12300,
+        "puffin_ms": 0.0
+      }
+    ],
+    "row_group_bloom_filter": [
+      {
+        "total_ms": 8293,
+        "puffin_ms": 0.0
+      },
+      {
+        "total_ms": 6879,
+        "puffin_ms": 0.0
+      }
+    ],
+    "file_level_bloom_filter": [
+      {
+        "total_ms": 4319,
+        "puffin_ms": 282.0
+      },
+      {
+        "total_ms": 6665,
+        "puffin_ms": 422.0
+      }
+    ]
+  },
+  "time_write_ms": {
+    "no_bloom_filter": [
+      {
+        "metadata_ms": 0,
+        "puffin_ms": 0.0,
+        "data_ms": 148183.45,
+        "total_ms": 148183
+      },
+      {
+        "metadata_ms": 0,
+        "puffin_ms": 0.0,
+        "data_ms": 167457.88,
+        "total_ms": 167458
+      }
+    ],
+    "row_group_bloom_filter": [
+      {
+        "metadata_ms": 0,
+        "puffin_ms": 0.0,
+        "data_ms": 186909.86,
+        "total_ms": 186910
+      },
+      {
+        "metadata_ms": 0,
+        "puffin_ms": 0.0,
+        "data_ms": 190422.34,
+        "total_ms": 190422
+      }
+    ],
+    "file_level_bloom_filter": [
+      {
+        "metadata_ms": 0,
+        "puffin_ms": 120993.51,
+        "data_ms": 131691.55,
+        "total_ms": 252685
+      },
+      {
+        "metadata_ms": 0,
+        "puffin_ms": 107649.9,
+        "data_ms": 159115.84,
+        "total_ms": 266766
+      }
+    ]
+  }
+}
